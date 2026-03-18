@@ -234,6 +234,12 @@ export async function handleConfig(req: Request, env: Env): Promise<Response> {
     return getAuthChallenge();
   }
   
+  // Debug: log environment variables (safely)
+  console.log('[Config] ADMIN_USERNAME:', env.ADMIN_USERNAME ? 'set' : 'missing');
+  console.log('[Config] ADMIN_PASSWORD:', env.ADMIN_PASSWORD ? 'set' : 'missing');
+  console.log('[Config] ADMIN_USERNAME length:', env.ADMIN_USERNAME?.length);
+  console.log('[Config] ADMIN_PASSWORD length:', env.ADMIN_PASSWORD?.length);
+  
   // Return sanitized config (no secrets)
   const config = {
     vars: {
@@ -242,6 +248,7 @@ export async function handleConfig(req: Request, env: Env): Promise<Response> {
       LLM_BASE_URL: env.LLM_BASE_URL ? '***' : undefined,
       IFLLOW_API_KEY: env.IFLLOW_API_KEY ? '***' : undefined,
       MODELSCOPE_API_KEY: env.MODELSCOPE_API_KEY ? '***' : undefined,
+      OPENAI_API_KEY: env.OPENAI_API_KEY ? '***' : undefined,
       ADMIN_USERNAME: env.ADMIN_USERNAME,
       ADMIN_PASSWORD: env.ADMIN_PASSWORD ? '***' : undefined,
     },
