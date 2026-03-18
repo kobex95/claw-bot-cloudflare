@@ -3,57 +3,23 @@ main = "src/index.ts"
 compatibility_date = "2025-03-01"
 compatibility_flags = ["nodejs_compat"]
 
-# Development environment
-[env.dev]
-# No durable objects in dev (use mock)
-
-# Production environment
-[env.production]
-# Durable Object for session management
-[[durable_objects.bindings]]
-name = "SESSION_DO"
-class_name = "SessionDO"
-
 # KV namespace for skills storage
 [[kv_namespaces]]
 binding = "KV_SKILLS"
-id = "your-kv-namespace-id"  # Replace after creating KV
+id = "6717aa4238004db28d8850eeab69d76e"
 
-# D1 database for long-term memory
 [[d1_databases]]
 binding = "DB_MEMORY"
 database_name = "claw-memory"
-database_id = "your-d1-database-id"  # Replace after creating D1
+database_id = "96b90725-97e4-4af5-9b7d-16e5fa1fcc1f"
 
-# Cron triggers for heartbeat and maintenance
+# Cron triggers
 [triggers]
-crons = ["*/5 * * * *"]  # Every 5 minutes
+crons = ["*/5 * * * *"]
 
-# Variables (use secrets in production)
+# Variables
 [vars]
-# LLM Provider configuration
-LLM_PROVIDER = "cloudflare"  # Options: "cloudflare" | "iflow" | "modelscope" | "openai-compatible"
-LLM_MODEL = ""               # Model name (provider-specific)
-LLM_BASE_URL = ""            # Required for openai-compatible provider
-
-# API Keys (set via wrangler secret)
-# OPENAI_API_KEY = ""       # For StepFun/OpenAI-compatible
-# IFLLOW_API_KEY = ""       # For iFlow
-# MODELSCOPE_API_KEY = ""   # For ModelScope
-
-# Optional for channel adapters
-# TELEGRAM_BOT_TOKEN = ""
-# DISCORD_BOT_TOKEN = ""
-
-# Admin panel
-# ADMIN_USERNAME = "admin"
-# ADMIN_PASSWORD = "your-secure-password"
-
-# Feishu integration
-# FEISHU_APP_ID = ""
-# FEISHU_APP_SECRET = ""
-# FEISHU_ENCRYPT_KEY = ""
-
-# Build configuration
-[build]
-command = "npm run build"
+LLM_PROVIDER = "iflow"
+IFLLOW_API_KEY = "sk-17503aef4a609b2cb14618ab6a452355"
+ADMIN_USERNAME = "ericlx"
+ADMIN_PASSWORD = "bb5201314lx"
