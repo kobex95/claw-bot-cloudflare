@@ -5,10 +5,7 @@
 
 import { Request } from '../types';
 
-const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'changeme';
-
-export function adminAuthRequired(req: Request): boolean {
+export function adminAuthRequired(req: Request, env: any): boolean {
   const auth = req.headers.get('Authorization');
   
   if (!auth || !auth.startsWith('Basic ')) {
@@ -18,7 +15,11 @@ export function adminAuthRequired(req: Request): boolean {
   const credentials = Buffer.from(auth.slice(6)).toString('utf-8');
   const [username, password] = credentials.split(':');
   
-  return username === ADMIN_USERNAME && password === ADMIN_PASSWORD;
+  // Get credentials from env (set via wrangler secret)
+  const expectedUsername = env.ADMIN_USERNAME || 'admin';
+  const expectedPassword = env.ADMIN_PASSWORD || 'changeme';
+  
+  return username === expectedUsername && password === expectedPassword;
 }
 
 export function getAuthChallenge(): Response {
