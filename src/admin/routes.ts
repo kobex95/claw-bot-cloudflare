@@ -5,6 +5,7 @@
 
 import { Env } from '../types';
 import { adminAuthRequired, getAuthChallenge } from './auth';
+import { listSessionsD1, countAllSessionsD1, countAllMessagesD1, deleteSessionD1 } from '../memory/D1Session';
 
 export interface DashboardStats {
   totalSessions: number;
@@ -17,19 +18,12 @@ export interface DashboardStats {
 
 export async function handleDashboard(req: Request, env: Env): Promise<Response> {
   try {
-    console.log('[Dashboard] Request received');
-    
     if (!adminAuthRequired(req, env)) {
-      console.log('[Dashboard] Authentication failed');
       return getAuthChallenge();
     }
     
-    console.log('[Dashboard] Authentication successful');
-    
     // Gather statistics
     const stats = await collectStats(env);
-    
-    console.log('[Dashboard] Returning stats:', stats);
     
     return new Response(JSON.stringify(stats, null, 2), {
       headers: { 'Content-Type': 'application/json' },
@@ -48,68 +42,50 @@ export async function handleDashboard(req: Request, env: Env): Promise<Response>
 }
 
 async function collectStats(env: Env): Promise<DashboardStats> {
-  console.log('[Stats] Starting collection...');
-
-  // Count sessions (DO or memory-based estimate)
   let totalSessions = 0;
+  let totalMessages = 0;
+  let totalSkills = 0;
+  
+  // Count sessions from D1
   try {
-    console.log('[Stats] Counting sessions...');
-    if (env.SESSION_DO) {
-      const sessionList = await env.SESSION_DO.list();
-      totalSessions = sessionList.length;
-      console.log('[Stats] Sessions via DO:', totalSessions);
-    } else {
-      // No DO - count from KV if we store session keys there
-      const keys = await env.KV_SKILLS.list({ prefix: 'session:' });
-      totalSessions = keys.keys.length;
-      console.log('[Stats] Sessions via KV:', totalSessions);
-    }
+    totalSessions = await countAllSessionsD1(env);
   } catch (error) {
     console.error('[Stats] Error counting sessions:', error);
-    totalSessions = 0;
   }
-
-  // Count messages (if we store them)
-  let totalMessages = 0;
+  
+  // Count messages from D1
   try {
-    console.log('[Stats] Counting messages...');
-    // If we store message counts per session in KV
-    const keys = await env.KV_SKILLS.list({ prefix: 'msg-count:' });
-    console.log('[Stats] Found message count keys:', keys.keys.length);
-    for (const key of keys.keys) {
-      try {
-        const count = await env.KV_SKILLS.get(key.name, 'json');
-        if (typeof count === 'number') {
-          totalMessages += count;
-        }
-      } catch (e) {
-        console.warn('[Stats] Error reading count for key:', key.name, e);
-      }
-    }
-    console.log('[Stats] Total messages:', totalMessages);
+    totalMessages = await countAllMessagesD1(env);
   } catch (error) {
     console.error('[Stats] Error counting messages:', error);
   }
-
-  // Count skills
-  let totalSkills = 0;
+  
+  // Count skills from KV
   try {
-    console.log('[Stats] Counting skills...');
     const skillsList = await env.KV_SKILLS.get('skills-list', 'json');
     totalSkills = (skillsList as string[] | undefined)?.length || 0;
-    console.log('[Stats] Skills count:', totalSkills);
   } catch (error) {
     console.error('[Stats] Error counting skills:', error);
   }
-
-  console.log('[Stats] Collection complete:', { totalSessions, totalMessages, totalSkills });
-
+  
+  // Estimate active sessions (sessions updated in last 24h)
+  let activeSessions = 0;
+  try {
+    const result = await env.DB_MEMORY.prepare(
+      'SELECT COUNT(*) as count FROM sessions WHERE updated_at > ?'
+    ).bind(Date.now() - 24 * 60 * 60 * 1000).first();
+    activeSessions = result?.count || 0;
+  } catch (error) {
+    console.error('[Stats] Error counting active sessions:', error);
+    activeSessions = Math.floor(totalSessions * 0.3);
+  }
+  
   return {
     totalSessions,
-    activeSessions: Math.floor(totalSessions * 0.3), // Estimate
+    activeSessions,
     totalMessages,
     totalSkills,
-    uptime: 'N/A', // Would need to track worker start time
+    uptime: 'N/A',
     lastDeployed: new Date().toISOString(),
   };
 }
@@ -118,100 +94,75 @@ export async function handleSessions(req: Request, env: Env): Promise<Response> 
   if (!adminAuthRequired(req, env)) {
     return getAuthChallenge();
   }
-
+  
   const url = new URL(req.url);
   const pathParts = url.pathname.split('/').filter(Boolean);
   const sessionId = pathParts[pathParts.length - 1];
-
-  if (req.method === 'GET' && sessionId && sessionId !== 'sessions') {
-    // Get specific session
-    if (env.SESSION_DO) {
-      const sessionDO = env.SESSION_DO.get(sessionId);
-      const session = await sessionDO.fetch(new Request('http://session/session'));
-      return session;
-    } else {
-      // Memory mode - sessions not persisted
-      return new Response(JSON.stringify({ error: 'Session persistence not available in memory mode' }), {
-        status: 404,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
-  }
-
+  
   if (req.method === 'GET') {
-    // List all sessions (limited)
-    if (env.SESSION_DO) {
+    if (sessionId && sessionId !== 'sessions') {
+      // Get specific session
       try {
-        const sessionList = await env.SESSION_DO.list();
-        const sessions = await Promise.all(
-          sessionList.map(async (id) => {
-            try {
-              const sessionDO = env.SESSION_DO.get(id);
-              const res = await sessionDO.fetch(new Request('http://session/session'));
-              if (res.ok) {
-                const session = await res.json();
-                return {
-                  id: session.id,
-                  userId: session.userId,
-                  chatId: session.chatId,
-                  messageCount: session.messages?.length || 0,
-                  updatedAt: session.updatedAt,
-                };
-              }
-            } catch (e) {
-              // Ignore individual session errors
-            }
-            return null;
-          })
-        );
-        return new Response(JSON.stringify(sessions.filter(Boolean)), {
+        const { getSessionD1 } = await import('../memory/D1Session');
+        const session = await getSessionD1(sessionId, env);
+        if (session) {
+          return new Response(JSON.stringify(session), {
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        return new Response(JSON.stringify({ error: 'Session not found' }), {
+          status: 404,
           headers: { 'Content-Type': 'application/json' },
         });
       } catch (error) {
-        return new Response(JSON.stringify({ error: 'Failed to list sessions' }), {
+        return new Response(JSON.stringify({ error: 'Failed to get session' }), {
           status: 500,
           headers: { 'Content-Type': 'application/json' },
         });
       }
-    } else {
-      // Memory mode - no persistent sessions
+    }
+    
+    // List all sessions
+    try {
+      const { listSessionsD1 } = await import('../memory/D1Session');
+      const sessions = await listSessionsD1(env);
+      return new Response(JSON.stringify(sessions), {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    } catch (error) {
       return new Response(JSON.stringify([]), {
         headers: { 'Content-Type': 'application/json' },
       });
     }
   }
-
+  
   if (req.method === 'DELETE') {
     if (sessionId && sessionId !== 'sessions') {
       // Delete specific session
-      if (env.SESSION_DO) {
-        const sessionDO = env.SESSION_DO.get(sessionId);
-        await sessionDO.fetch(new Request('http://session/session', { method: 'DELETE' }));
+      try {
+        const { deleteSessionD1 } = await import('../memory/D1Session');
+        await deleteSessionD1(sessionId, env);
         return new Response(JSON.stringify({ success: true }));
-      } else {
-        return new Response(JSON.stringify({ error: 'Cannot delete sessions in memory mode' }), {
-          status: 400,
+      } catch (error) {
+        return new Response(JSON.stringify({ error: 'Failed to delete session' }), {
+          status: 500,
           headers: { 'Content-Type': 'application/json' },
         });
       }
     } else {
       // Clear all sessions
-      if (env.SESSION_DO) {
-        const sessionList = await env.SESSION_DO.list();
-        for (const id of sessionList) {
-          const sessionDO = env.SESSION_DO.get(id);
-          await sessionDO.fetch(new Request('http://session/session', { method: 'DELETE' }));
-        }
+      try {
+        await env.DB_MEMORY.prepare('DELETE FROM sessions').run();
         return new Response(JSON.stringify({ success: true }));
-      } else {
-        return new Response(JSON.stringify({ error: 'Cannot clear sessions in memory mode' }), {
-          status: 400,
+      } catch (error) {
+        return new Response(JSON.stringify({ error: 'Failed to clear sessions' }), {
+          status: 500,
           headers: { 'Content-Type': 'application/json' },
         });
       }
     }
   }
-
+  
   return new Response('Method not allowed', { status: 405 });
 }
 
@@ -219,48 +170,44 @@ export async function handleSkills(req: Request, env: Env): Promise<Response> {
   if (!adminAuthRequired(req, env)) {
     return getAuthChallenge();
   }
-
-  const url = new URL(req.url);
-  const pathParts = url.pathname.split('/').filter(Boolean);
-  const skillName = pathParts[pathParts.length - 1];
-
+  
   if (req.method === 'GET') {
-    // List all skills
     const skillsList = await env.KV_SKILLS.get('skills-list', 'json');
     const skills = (skillsList as any[] | undefined) || [];
     return new Response(JSON.stringify(skills), {
       headers: { 'Content-Type': 'application/json' },
     });
   }
-
+  
   if (req.method === 'POST') {
-    // Reload skills from KV
-    await loadSkillsFromKV(env);
+    // Reload skills
+    console.log('Skills reload requested');
     return new Response(JSON.stringify({ success: true }));
   }
-
+  
   if (req.method === 'DELETE') {
-    // Delete a specific skill or all
+    const url = new URL(req.url);
+    const pathParts = url.pathname.split('/').filter(Boolean);
+    const skillName = pathParts[pathParts.length - 1];
+    
     if (skillName && skillName !== 'skills') {
-      // Remove single skill
       const skillsList = await env.KV_SKILLS.get('skills-list', 'json');
       const skills = (skillsList as any[] | undefined) || [];
       const filtered = skills.filter(s => s.name !== skillName);
       await env.KV_SKILLS.put('skills-list', JSON.stringify(filtered));
-      await env.KV_SKILLS.delete(`skill:${skillName}`);
+      await env.KV_SKILLS.delete('skill:' + skillName);
       return new Response(JSON.stringify({ success: true }));
     } else {
-      // Clear all skills
       const skillsList = await env.KV_SKILLS.get('skills-list', 'json');
       const skills = (skillsList as any[] | undefined) || [];
       for (const skill of skills) {
-        await env.KV_SKILLS.delete(`skill:${skill.name}`);
+        await env.KV_SKILLS.delete('skill:' + skill.name);
       }
       await env.KV_SKILLS.delete('skills-list');
       return new Response(JSON.stringify({ success: true }));
     }
   }
-
+  
   return new Response('Method not allowed', { status: 405 });
 }
 
@@ -268,21 +215,12 @@ export async function handleConfig(req: Request, env: Env): Promise<Response> {
   if (!adminAuthRequired(req, env)) {
     return getAuthChallenge();
   }
-
-  // Debug: log environment variables (safely)
-  console.log('[Config] ADMIN_USERNAME:', env.ADMIN_USERNAME ? 'set' : 'missing');
-  console.log('[Config] ADMIN_PASSWORD:', env.ADMIN_PASSWORD ? 'set' : 'missing');
-  console.log('[Config] ADMIN_USERNAME length:', env.ADMIN_USERNAME?.length);
-  console.log('[Config] ADMIN_PASSWORD length:', env.ADMIN_PASSWORD?.length);
-
-  // Return sanitized config (no secrets)
+  
   const config = {
     vars: {
       LLM_PROVIDER: env.LLM_PROVIDER,
       LLM_MODEL: env.LLM_MODEL,
       LLM_BASE_URL: env.LLM_BASE_URL ? '***' : undefined,
-      IFLLOW_API_KEY: env.IFLLOW_API_KEY ? '***' : undefined,
-      MODELSCOPE_API_KEY: env.MODELSCOPE_API_KEY ? '***' : undefined,
       OPENAI_API_KEY: env.OPENAI_API_KEY ? '***' : undefined,
       ADMIN_USERNAME: env.ADMIN_USERNAME,
       ADMIN_PASSWORD: env.ADMIN_PASSWORD ? '***' : undefined,
@@ -293,15 +231,8 @@ export async function handleConfig(req: Request, env: Env): Promise<Response> {
       SESSION_DO: env.SESSION_DO ? 'configured' : undefined,
     },
   };
-
+  
   return new Response(JSON.stringify(config, null, 2), {
     headers: { 'Content-Type': 'application/json' },
   });
-}
-
-// Load skills from KV storage
-async function loadSkillsFromKV(env: Env): Promise<void> {
-  // This would typically load skill definitions from KV
-  // For now, skills are bundled at build time
-  console.log('Skills reload requested');
 }
