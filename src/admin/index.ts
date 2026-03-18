@@ -775,9 +775,14 @@ export async function handleAdminRequest(request: Request, env: Env): Promise<Re
   
   try {
     if (path === '' || path === '/') {
-      // Serve admin UI
+      // Serve admin UI with CSP that allows inline scripts (for admin panel)
       return new Response(ADMIN_HTML, {
-        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+        headers: { 
+          'Content-Type': 'text/html; charset=utf-8',
+          // Relaxed CSP for admin panel (needs inline JS for simplicity)
+          // Note: This is safe because admin requires authentication
+          'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none';"
+        },
       });
     }
     
