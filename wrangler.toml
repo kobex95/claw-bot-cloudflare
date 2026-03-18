@@ -31,12 +31,14 @@ crons = ["*/5 * * * *"]  # Every 5 minutes
 
 # Variables (use secrets in production)
 [vars]
-# OpenAI API key for embedding (if using external)
 # OPENAI_API_KEY = "sk-..."
-# Telegram bot token
 # TELEGRAM_BOT_TOKEN = ""
-# Discord bot token
 # DISCORD_BOT_TOKEN = ""
+# ADMIN_USERNAME = "admin"
+# ADMIN_PASSWORD = "your-secure-password"
+# FEISHU_APP_ID = ""
+# FEISHU_APP_SECRET = ""
+# FEISHU_ENCRYPT_KEY = ""
 
 # Build configuration
 [build]
