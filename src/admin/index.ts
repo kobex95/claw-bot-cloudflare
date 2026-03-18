@@ -5,6 +5,339 @@
 
 import { handleDashboard, handleSessions, handleSkills, handleConfig } from './routes';
 
+// Embedded admin UI HTML (from public/admin/index.html)
+const ADMIN_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Panel - claw-bot-cloudflare</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; color: #333; }
+    .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+    
+    /* Header */
+    header { background: #1a1a1a; color: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
+    h1 { font-size: 1.5rem; }
+    .logout { background: #e74c3c; color: white; padding: 0.5rem 1rem; border-radius: 4px; text-decoration: none; }
+    
+    /* Stats Grid */
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin: 2rem 0; }
+    .stat-card { background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .stat-card h3 { font-size: 0.875rem; color: #666; margin-bottom: 0.5rem; }
+    .stat-card .value { font-size: 2rem; font-weight: bold; color: #2c3e50; }
+    
+    /* Sections */
+    section { background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 2rem; overflow: hidden; }
+    section h2 { background: #ecf0f1; padding: 1rem; font-size: 1.125rem; border-bottom: 1px solid #ddd; }
+    
+    /* Tables */
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 0.75rem 1rem; text-align: left; border-bottom: 1px solid #eee; }
+    th { background: #f8f9fa; font-weight: 600; color: #555; }
+    tr:hover { background: #f8f9fa; }
+    
+    /* Buttons */
+    .btn { display: inline-block; padding: 0.5rem 1rem; border: none; border-radius: 4px; cursor: pointer; font-size: 0.875rem; text-decoration: none; }
+    .btn-danger { background: #e74c3c; color: white; }
+    .btn-sm { padding: 0.25rem 0.5rem; font-size: 0.75rem; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    
+    /* Forms */
+    .form-group { margin-bottom: 1rem; }
+    label { display: block; margin-bottom: 0.5rem; font-weight: 500; }
+    input, select, textarea { width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.875rem; }
+    
+    /* Loading */
+    .loading { text-align: center; padding: 2rem; color: #666; }
+    
+    /* Tabs */
+    .tabs { display: flex; border-bottom: 1px solid #ddd; background: #f8f9fa; }
+    .tab { padding: 1rem 1.5rem; cursor: pointer; border-bottom: 2px solid transparent; }
+    .tab.active { border-bottom-color: #3498db; background: white; font-weight: 500; }
+    .tab-content { display: none; padding: 1.5rem; }
+    .tab-content.active { display: block; }
+    
+    /* Messages */
+    .alert { padding: 1rem; margin-bottom: 1rem; border-radius: 4px; }
+    .alert-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+    .alert-error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+    
+    /* Code */
+    pre { background: #f4f4f4; padding: 1rem; border-radius: 4px; overflow-x: auto; font-size: 0.875rem; }
+    code { font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🦀 Admin Panel</h1>
+    <a href="/chat" class="btn" style="background: #3498db; color: white;">← Back to Chat</a>
+  </header>
+  
+  <div class="container">
+    <div class="tabs">
+      <div class="tab active" data-tab="dashboard">Dashboard</div>
+      <div class="tab" data-tab="sessions">Sessions</div>
+      <div class="tab" data-tab="skills">Skills</div>
+      <div class="tab" data-tab="config">Configuration</div>
+    </div>
+    
+    <!-- Dashboard Tab -->
+    <div id="dashboard" class="tab-content active">
+      <div class="stats" id="stats">
+        <div class="loading">Loading statistics...</div>
+      </div>
+    </div>
+    
+    <!-- Sessions Tab -->
+    <div id="sessions" class="tab-content">
+      <div class="form-group" style="display: flex; gap: 10px;">
+        <input type="text" id="sessionSearch" placeholder="Search by user ID or chat ID..." style="flex: 1;">
+        <button class="btn" onclick="loadSessions()">Search</button>
+        <button class="btn btn-danger" onclick="clearAllSessions()">Clear All</button>
+      </div>
+      <table id="sessionsTable">
+        <thead>
+          <tr>
+            <th>Session ID</th>
+            <th>User ID</th>
+            <th>Chat ID</th>
+            <th>Messages</th>
+            <th>Last Updated</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td colspan="6" class="loading">Loading sessions...</td></tr>
+        </tbody>
+      </table>
+    </div>
+    
+    <!-- Skills Tab -->
+    <div id="skills" class="tab-content">
+      <div style="margin-bottom: 1rem; display: flex; gap: 10px;">
+        <button class="btn" onclick="reloadSkills()">Reload Skills</button>
+        <button class="btn btn-danger" onclick="clearAllSkills()">Clear All</button>
+      </div>
+      <table id="skillsTable">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Description</th>
+            <th>Version</th>
+            <th>Triggers</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td colspan="5" class="loading">Loading skills...</td></tr>
+        </tbody>
+      </table>
+    </div>
+    
+    <!-- Config Tab -->
+    <div id="config" class="tab-content">
+      <h3>Current Configuration</h3>
+      <pre id="configOutput"><code class="language-json">Loading...</code></pre>
+    </div>
+  </div>
+  
+  <script>
+    const API_BASE = '/admin';
+    
+    // Tab switching
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById(tab.dataset.tab).classList.add('active');
+        
+        if (tab.dataset.tab === 'dashboard') loadDashboard();
+        if (tab.dataset.tab === 'sessions') loadSessions();
+        if (tab.dataset.tab === 'skills') loadSkills();
+        if (tab.dataset.tab === 'config') loadConfig();
+      });
+    });
+    
+    async function loadDashboard() {
+      try {
+        const res = await fetch(\`\${API_BASE}/dashboard\`);
+        const stats = await res.json();
+        document.getElementById('stats').innerHTML = \`
+          <div class="stat-card">
+            <h3>Total Sessions</h3>
+            <div class="value">\${stats.totalSessions}</div>
+          </div>
+          <div class="stat-card">
+            <h3>Active Sessions</h3>
+            <div class="value">\${stats.activeSessions}</div>
+          </div>
+          <div class="stat-card">
+            <h3>Total Messages</h3>
+            <div class="value">\${stats.totalMessages}</div>
+          </div>
+          <div class="stat-card">
+            <h3>Loaded Skills</h3>
+            <div class="value">\${stats.totalSkills}</div>
+          </div>
+        \`;
+      } catch (err) {
+        document.getElementById('stats').innerHTML = \`<div class="alert-error">Failed to load stats</div>\`;
+      }
+    }
+    
+    async function loadSessions(search = '') {
+      const tbody = document.querySelector('#sessionsTable tbody');
+      tbody.innerHTML = '<tr><td colspan="6" class="loading">Loading sessions...</td></tr>';
+      
+      try {
+        const url = search ? \`\${API_BASE}/sessions?search=\${encodeURIComponent(search)}\` : \`\${API_BASE}/sessions\`;
+        const res = await fetch(url);
+        const sessions = await res.json();
+        
+        if (sessions.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6">No sessions found</td></tr>';
+          return;
+        }
+        
+        tbody.innerHTML = sessions.map(s => \`
+          <tr>
+            <td><code>\${s.id}</code></td>
+            <td>\${s.userId || '-'}</td>
+            <td>\${s.chatId || '-'}</td>
+            <td>\${s.messageCount}</td>
+            <td>\${new Date(s.updatedAt).toLocaleString()}</td>
+            <td>
+              <button class="btn btn-danger btn-sm" onclick="deleteSession('\${s.id}')">Delete</button>
+            </td>
+          </tr>
+        \`).join('');
+      } catch (err) {
+        tbody.innerHTML = '<tr><td colspan="6" class="alert-error">Failed to load sessions</td></tr>';
+      }
+    }
+    
+    async function deleteSession(sessionId) {
+      if (!confirm('Delete this session?')) return;
+      
+      try {
+        const res = await fetch(\`\${API_BASE}/sessions/\${sessionId}\`, { method: 'DELETE' });
+        if (res.ok) {
+          loadSessions();
+        } else {
+          alert('Failed to delete session');
+        }
+      } catch (err) {
+        alert('Error deleting session');
+      }
+    }
+    
+    async function clearAllSessions() {
+      if (!confirm('Delete ALL sessions? This cannot be undone.')) return;
+      
+      try {
+        const res = await fetch(\`\${API_BASE}/sessions\`, { method: 'DELETE' });
+        if (res.ok) {
+          loadSessions();
+        }
+      } catch (err) {
+        alert('Error clearing sessions');
+      }
+    }
+    
+    async function loadSkills() {
+      const tbody = document.querySelector('#skillsTable tbody');
+      tbody.innerHTML = '<tr><td colspan="5" class="loading">Loading skills...</td></tr>';
+      
+      try {
+        const res = await fetch(\`\${API_BASE}/skills\`);
+        const skills = await res.json();
+        
+        if (skills.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="5">No skills loaded</td></tr>';
+          return;
+        }
+        
+        tbody.innerHTML = skills.map(s => \`
+          <tr>
+            <td><strong>\${s.name}</strong></td>
+            <td>\${s.description || '-'}</td>
+            <td>\${s.version || '-'}</td>
+            <td>\${s.triggers?.join(', ') || '-'}</td>
+            <td>
+              <button class="btn btn-danger btn-sm" onclick="deleteSkill('\${s.name}')">Remove</button>
+            </td>
+          </tr>
+        \`).join('');
+      } catch (err) {
+        tbody.innerHTML = '<tr><td colspan="5" class="alert-error">Failed to load skills</td></tr>';
+      }
+    }
+    
+    async function deleteSkill(name) {
+      if (!confirm(\`Remove skill "\${name}"?\`)) return;
+      
+      try {
+        const res = await fetch(\`\${API_BASE}/skills\`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name }),
+        });
+        if (res.ok) {
+          loadSkills();
+        } else {
+          alert('Failed to delete skill');
+        }
+      } catch (err) {
+        alert('Error deleting skill');
+      }
+    }
+    
+    async function reloadSkills() {
+      try {
+        const res = await fetch(\`\${API_BASE}/skills\`, { method: 'POST' });
+        if (res.ok) {
+          alert('Skills reloaded');
+          loadSkills();
+        }
+      } catch (err) {
+        alert('Error reloading skills');
+      }
+    }
+    
+    async function clearAllSkills() {
+      if (!confirm('Remove ALL skills? This cannot be undone.')) return;
+      
+      const skillsList = await fetch(\`\${API_BASE}/skills\`).then(r => r.json());
+      for (const skill of skillsList) {
+        await fetch(\`\${API_BASE}/skills\`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: skill.name }),
+        });
+      }
+      loadSkills();
+    }
+    
+    async function loadConfig() {
+      try {
+        const res = await fetch(\`\${API_BASE}/config\`);
+        const config = await res.json();
+        document.getElementById('configOutput').innerHTML = 
+          \`<code>\${JSON.stringify(config, null, 2)}</code>\`;
+      } catch (err) {
+        document.getElementById('configOutput').innerHTML = 'Failed to load config';
+      }
+    }
+    
+    // Initial load
+    loadDashboard();
+  </script>
+</body>
+</html>`;
+
 export async function handleAdminRequest(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   
@@ -14,7 +347,9 @@ export async function handleAdminRequest(request: Request, env: Env): Promise<Re
   try {
     if (path === '' || path === '/') {
       // Serve admin UI
-      return await fetchAdminUI();
+      return new Response(ADMIN_HTML, {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+      });
     }
     
     if (path === '/dashboard' || path === '/stats') {
@@ -40,19 +375,4 @@ export async function handleAdminRequest(request: Request, env: Env): Promise<Re
       headers: { 'Content-Type': 'application/json' },
     });
   }
-}
-
-async function fetchAdminUI(): Promise<Response> {
-  // In production with Sites, this would serve from public/admin/
-  // For now, return the HTML directly
-  const html = `
-<!DOCTYPE html>
-<html>
-<head><title>Admin Panel</title></head>
-<body>
-  <h1>Admin UI would be served here</h1>
-  <p>Configure Sites binding in wrangler.toml to serve static files.</p>
-</body>
-</html>`;
-  return new Response(html, { headers: { 'Content-Type': 'text/html' } });
 }
