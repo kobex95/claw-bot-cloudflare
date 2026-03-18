@@ -163,8 +163,8 @@ export default {
         return outgoing;
       }
       
-      // Default: redirect to chat UI
-      return Response.redirect('/chat', 302);
+      // Default: serve chat UI directly (root path and any unmatched path)
+      return handleChatRequest(request, env, ctx);
       
     } catch (error) {
       console.error('Request failed:', error);
