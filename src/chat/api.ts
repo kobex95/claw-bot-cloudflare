@@ -3,7 +3,7 @@
  * Handles /chat/* endpoints for the web chat interface
  */
 
-import { Env, IncomingMessage, Session } from '../types';
+import { Env, IncomingMessage } from '../types';
 import { getSession } from '../memory/SessionDO';
 import { getSessionMemory, saveSessionMemory } from '../memory/MemorySession';
 import { handleRequest } from '../agent/handler';
@@ -356,13 +356,12 @@ const CHAT_HTML = `<!DOCTYPE html>
     }
     
     // 添加消息到界面
-    function addMessage(text, isUser = false) {
+    function addMessage(text, isUser) {
       const msg = document.createElement('div');
-      msg.className = \`message \${isUser ? 'user' : 'assistant'}\`;
-      msg.innerHTML = \`
-        \${escapeHtml(text)}
-        <div class="time">\${formatTime(new Date())}</div>
-      \`;
+      msg.className = 'message ' + (isUser ? 'user' : 'assistant');
+      msg.innerHTML = 
+        escapeHtml(text) +
+        '<div class="time">' + formatTime(new Date()) + '</div>';
       messagesDiv.appendChild(msg);
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
@@ -371,11 +370,8 @@ const CHAT_HTML = `<!DOCTYPE html>
       const typing = document.createElement('div');
       typing.className = 'typing';
       typing.id = 'typingIndicator';
-      typing.innerHTML = \`
-        <span></span>
-        <span></span>
-        <span></span>
-      \`;
+      typing.innerHTML = 
+        '<span></span><span></span><span></span>';
       messagesDiv.appendChild(typing);
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
@@ -424,9 +420,9 @@ const CHAT_HTML = `<!DOCTYPE html>
           const err = await res.text();
           try {
             const errObj = JSON.parse(err);
-            addMessage(\`❌ 错误: \${errObj.error || err}\`, false);
-          } catch {
-            addMessage(\`❌ 错误: \${err}\`, false);
+            addMessage('❌ 错误: ' + (errObj.error || err), false);
+          } catch (e) {
+            addMessage('❌ 错误: ' + err, false);
           }
           return;
         }
@@ -442,7 +438,7 @@ const CHAT_HTML = `<!DOCTYPE html>
         
       } catch (err) {
         hideTyping();
-        addMessage(\`❌ 网络错误: \${err.message}\`, false);
+        addMessage('❌ 网络错误: ' + err.message, false);
       } finally {
         sendBtn.disabled = false;
         input.focus();
@@ -474,19 +470,19 @@ const CHAT_HTML = `<!DOCTYPE html>
 </html>`;
 
 // Helper: Get session with DO or memory fallback
-async function getSessionWithFallback(sessionId: string, env: Env): Promise<any> {
+async function getSessionWithFallback(sessionId, env) {
   if (env.SESSION_DO) {
     // Use Durable Object
     const sessionDO = env.SESSION_DO.get(sessionId);
     return await getSession(sessionDO, env);
   } else {
     // Use memory fallback
-    return await (await import('./memory/MemorySession')).getSessionMemory(sessionId, env);
+    return await getSessionMemory(sessionId, env);
   }
 }
 
 // Helper: Save session with DO or memory fallback
-async function saveSessionWithFallback(sessionId: string, session: any, env: Env): Promise<void> {
+async function saveSessionWithFallback(sessionId, session, env) {
   if (env.SESSION_DO) {
     // Use Durable Object - POST to save
     const sessionDO = env.SESSION_DO.get(sessionId);
@@ -496,17 +492,17 @@ async function saveSessionWithFallback(sessionId: string, session: any, env: Env
       headers: { 'Content-Type': 'application/json' }
     }));
     if (!res.ok) {
-      throw new Error(\`Failed to save session: \${await res.text()}\`);
+      throw new Error('Failed to save session: ' + await res.text());
     }
   } else {
     // Use memory fallback
-    await (await import('./memory/MemorySession')).saveSessionMemory(sessionId, session);
+    await saveSessionMemory(sessionId, session);
   }
 }
 
-export async function handleChatRequest(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+export async function handleChatRequest(request, env, ctx) {
   const url = new URL(request.url);
-  const path = url.pathname.replace(/^\\/chat/, '');
+  const path = url.pathname.replace(/^\/chat/, '');
   
   if (path === '' || path === '/') {
     // Serve chat UI
@@ -523,7 +519,7 @@ export async function handleChatRequest(request: Request, env: Env, ctx: Executi
   return new Response('Not found', { status: 404 });
 }
 
-async function handleChatMessage(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+async function handleChatMessage(request, env, ctx) {
   try {
     const { message, sessionId } = await request.json();
     
@@ -535,7 +531,7 @@ async function handleChatMessage(request: Request, env: Env, ctx: ExecutionConte
     }
     
     // Build incoming message
-    const incoming: IncomingMessage = {
+    const incoming = {
       userId: 'web-user',
       chatId: sessionId || 'web',
       text: message,
@@ -544,7 +540,7 @@ async function handleChatMessage(request: Request, env: Env, ctx: ExecutionConte
     };
     
     // Get or create session (with fallback)
-    const effectiveSessionId = sessionId || \`web-\${Date.now()}\`;
+    const effectiveSessionId = sessionId || 'web-' + Date.now();
     let session = await getSessionWithFallback(effectiveSessionId, env);
     
     // Ensure session has correct IDs
@@ -554,7 +550,7 @@ async function handleChatMessage(request: Request, env: Env, ctx: ExecutionConte
     
     // Add incoming message to session
     session.messages.push({
-      id: \`msg-\${Date.now()}\`,
+      id: 'msg-' + Date.now(),
       direction: 'in',
       type: 'text',
       content: message,
@@ -576,7 +572,7 @@ async function handleChatMessage(request: Request, env: Env, ctx: ExecutionConte
     
     // Add outgoing message
     session.messages.push({
-      id: \`out-\${Date.now()}\`,
+      id: 'out-' + Date.now(),
       direction: 'out',
       type: 'text',
       content: response,
