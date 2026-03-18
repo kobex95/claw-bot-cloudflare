@@ -1,281 +1,207 @@
 # claw-bot-cloudflare
 
-A lightweight AI assistant built for Cloudflare Workers, inspired by nanobot-ts.
+一个基于 Cloudflare Workers 构建的轻量级 AI 助手，灵感来自 nanobot-ts。
 
-## Features
+## ✨ 功能特性
 
-- **Multi-channel Support**: Telegram, Discord, Feishu, and direct API
-- **Skill System**: Extensible plugin architecture with Markdown skills
-- **Session Management**: Durable Objects for stateful conversations
-- **Memory**: KV Store for short-term, D1 for long-term memory
-- **LLM Providers**: Cloudflare AI, OpenAI, StepFun, and custom endpoints
-- **Cron Tasks**: Built-in heartbeat and scheduled tasks
-- **Gateway Mode**: Single worker handles all channels
-- **Admin Panel**: Web-based administration interface
-  - Dashboard with real-time statistics
-  - Session management (view/delete)
-  - Skill management (list/reload/remove)
-  - Configuration viewer
-- **Web Chat Interface**: Beautiful, responsive chat UI
-  - Real-time conversation
-  - Session persistence
-  - Mobile-friendly design
+- **多平台支持**：Telegram、Discord、飞书、以及直接 API 访问
+- **技能系统**：可扩展的插件架构，使用 Markdown 编写技能
+- **会话管理**：使用 Durable Objects 实现有状态的对话
+- **记忆存储**：KV 存储短期记忆，D1 数据库长期记忆
+- **多 LLM 提供商**：支持 Cloudflare AI、OpenAI、StepFun 及自定义端点
+- **定时任务**：内置心跳检测和定时任务系统
+- **网关模式**：单个 Worker 处理所有渠道消息
+- **管理后台**：Web 可视化管理系统
+  - 📊 实时数据统计面板
+  - 📱 会话管理（查看/删除）
+  - 🔧 技能管理（列表/重载/移除）
+  - ⚙️ 配置查看器
+- **Web 聊天界面**：美观、响应式的聊天 UI
+  - 💬 实时对话
+  - 💾 会话持久化
+  - 📱 移动端友好
 
-## Quick Start
+## 🚀 快速开始
 
-### Prerequisites
+### 前置要求
 
 - Node.js 18+
-- Cloudflare account
+- Cloudflare 账号
 - Wrangler CLI
-- Telegram bot token (optional)
+- Telegram bot token（可选）
 
-### Setup
+### 安装配置
 
 ```bash
-# Install dependencies
+# 1. 克隆项目
+git clone https://github.com/kobex95/claw-bot-cloudflare.git
+cd claw-bot-cloudflare
+
+# 2. 安装依赖
 npm install
 
-# Build the project
+# 3. 构建项目
 npm run build
 
-# Deploy to Cloudflare (first time)
+# 4. 配置 Cloudflare 资源
 npx wrangler kv:namespace create skills
 npx wrangler d1 create claw-memory
-# Copy the generated IDs to wrangler.toml
+# 复制生成的 ID 到 wrangler.toml
 
-# Set secrets (admin panel)
-npx wrangler secret put OPENAI_API_KEY
-npx wrangler secret put TELEGRAM_BOT_TOKEN
+# 5. 设置密钥（管理后台用）
 npx wrangler secret put ADMIN_USERNAME
 npx wrangler secret put ADMIN_PASSWORD
+npx wrangler secret put OPENAI_API_KEY
 
-# Deploy
+# 6. 部署
 npm run deploy
 ```
 
-### Environment Variables
+### 环境变量配置
+
+在 `wrangler.toml` 中配置：
+
+```toml
+[vars]
+# LLM 提供商配置
+LLM_PROVIDER = "openai-compatible"  # 可选: cloudflare, iflow, modelscope, openai-compatible
+LLM_MODEL = "qwen3-coder-plus"       # 模型名称
+LLM_BASE_URL = "https://apis.iflow.cn/v1"  # API 地址（仅 openai-compatible 需要）
+OPENAI_API_KEY = "sk-..."            # API Key
+
+# 管理后台账号
+ADMIN_USERNAME = "admin"
+ADMIN_PASSWORD = "your_secure_password"
+```
+
+也可通过 `npx wrangler secret put` 设置敏感信息：
 
 ```bash
-# Required for LLM
-OPENAI_API_KEY=sk-...          # StepFun or OpenAI API key
-
-# Optional for channel adapters
-TELEGRAM_BOT_TOKEN=123:ABC    # Telegram bot token
-DISCORD_BOT_TOKEN=...         # Discord bot token
-
-# Admin panel (set via wrangler secret)
-ADMIN_USERNAME=admin          # Admin username
-ADMIN_PASSWORD=secure123      # Admin password (strong!)
+npx wrangler secret put OPENAI_API_KEY
+npx wrangler secret put ADMIN_PASSWORD
 ```
 
-## Architecture
+## 🌐 访问地址
+
+部署成功后，可通过以下地址访问：
+
+- **聊天主页**: `https://your-worker.your-subdomain.workers.dev/`
+- **管理后台**: `https://your-worker.your-subdomain.workers.dev/admin`
+  - 默认账号: `admin`
+  - 默认密码: 你在 wrangler secret 中设置的 `ADMIN_PASSWORD`
+
+## 📊 管理后台功能
+
+### 数据概览
+- 总会话数
+- 活跃会话（24小时内）
+- 总消息数
+- 已加载技能数
+
+### 会话管理
+- 查看所有会话列表
+- 查看会话详情（消息记录）
+- 删除单个或全部会话
+
+### 技能管理
+- 查看已加载技能
+- 重新加载技能
+- 移除技能
+
+### 配置查看
+- 查看当前环境变量（敏感信息已掩码）
+- 检查绑定资源状态
+
+## 🔧 开发说明
+
+### 项目结构
 
 ```
-┌─────────────────┐
-│   Channel       │ (Telegram, Discord, etc.)
-│   Adapter       │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│   Worker        │ Main entry point
-│   (index.ts)    │
-└────────┬────────┘
-         │
-         ├─────────────┐
-         ▼             ▼
-┌─────────────┐ ┌──────────────┐
-│   Session   │ │   Skills     │
-│   DO        │ │   Loader     │
-└─────────────┘ └──────────────┘
-         │
-         ▼
-┌─────────────────┐
-│   LLM           │ Provider (Cloudflare AI,
-│   Provider      │ StepFun, OpenAI)
-└─────────────────┘
+src/
+├── admin/           # 管理后台
+│   ├── index.ts    # UI + 路由
+│   ├── routes.ts   # API 处理
+│   └── auth.ts     # 认证中间件
+├── agent/          # AI 代理核心
+│   ├── handler.ts  # 请求处理
+│   ├── context.ts  # 技能上下文
+│   └── skills/     # 技能定义
+├── channels/       # 渠道适配器
+│   ├── adapter.ts  # 适配器接口
+│   ├── feishu.ts   # 飞书适配器
+│   ├── telegram.ts # Telegram 适配器
+│   └── discord.ts  # Discord 适配器
+├── memory/         # 存储层
+│   ├── SessionDO.ts    # Durable Object 会话
+│   ├── MemorySession.ts # 内存回退
+│   └── D1Session.ts    # D1 持久化
+├── providers/      # LLM 提供商
+│   ├── openai-compatible.ts
+│   ├── iflow.ts
+│   └── modelscope.ts
+├── chat/           # Web 聊天界面
+│   └── api.ts      # 聊天 API + UI
+├── types.ts        # TypeScript 类型定义
+└── index.ts        # Worker 入口
 ```
 
-## Development
+### 添加新技能
 
-### Project Structure
-
-```
-claw-bot-cloudflare/
-├── src/
-│   ├── index.ts          # Worker entry (main router)
-│   ├── types.ts          # TypeScript definitions
-│   ├── agent/
-│   │   └── handler.ts   # Request processing
-│   ├── admin/            # Admin API & routes
-│   │   ├── index.ts
-│   │   ├── auth.ts       # HTTP Basic Auth
-│   │   └── routes.ts     # Dashboard, sessions, skills, config
-│   ├── channels/         # Channel adapters
-│   │   ├── adapter.ts   # Factory
-│   │   ├── telegram.ts  # Telegram Bot API
-│   │   ├── discord.ts   # Discord interactions
-│   │   └── cloudflare.ts # Direct API
-│   ├── chat/
-│   │   └── api.ts       # Chat web interface API
-│   ├── memory/
-│   │   ├── SessionDO.ts # Durable Object (session state)
-│   │   └── memory.ts    # Memory API (KV + D1)
-│   ├── providers/
-│   │   └── cloudflare-ai.ts # LLM provider abstraction
-│   └── skills/
-│       ├── loader.ts    # Dynamic loading from KV
-│       ├── echo.ts      # Example skill
-│       └── calculator.ts
-├── public/               # Static frontend files
-│   ├── admin/
-│   │   └── index.html   # Admin panel UI
-│   └── chat/
-│       └── index.html   # Web chat interface
-├── tests/
-├── examples/
-├── package.json
-├── tsconfig.json
-├── wrangler.toml
-└── README.md
-```
-
-### Adding a Skill
-
-Skills are TypeScript modules with:
-- `name`: unique identifier
-- `description`: what it does
-- `triggers`: array of keywords/commands
-- `handler`: async function that returns a response
-
-Example:
+创建 `src/agent/skills/your-skill.ts`：
 
 ```typescript
-export const mySkill = {
-  name: 'my-skill',
-  description: 'Does something useful',
+import { SkillContext } from '../context';
+
+export const skill = {
+  name: 'your-skill',
+  description: '技能描述',
   version: '1.0.0',
-  triggers: ['/myskill', 'do thing'],
-  handler: async (ctx) => {
-    return `You said: ${ctx.message.text}`;
-  },
+  triggers: ['/yourcommand', '关键词'],
+  
+  handler: async (ctx: SkillContext): Promise<string> => {
+    // 你的逻辑
+    return '响应内容';
+  }
 };
 ```
 
-## Configuration
+### 自定义 LLM 提供商
 
-### wrangler.toml
+在 `src/providers/` 添加新文件，实现 `LLMProvider` 接口。
 
-Key bindings:
-- `KV_SKILLS`: Stores skill definitions
-- `DB_MEMORY`: D1 database for long-term memory
-- `SESSION_DO`: Durable Object for session state
+## 🐛 故障排除
 
-Triggers:
-- `crons`: Scheduled tasks (heartbeat, cleanup)
+### 管理后台无法登录
 
-Environments:
-- `dev`: Local development
-- `production`: Live deployment
+- 检查 `ADMIN_USERNAME` 和 `ADMIN_PASSWORD` 是否已设置
+- 使用 `npx wrangler secret list` 查看已设置的密钥
+- 确保浏览器已清除缓存和登录状态
 
-## Deployment
+### 聊天无响应
 
-### First Deployment
+- 检查 LLM 配置（`LLM_PROVIDER`、`LLM_BASE_URL`、`OPENAI_API_KEY`）
+- 查看 Cloudflare Workers 日志：`npx wrangler tail`
+- 确认 API Key 有效且有额度
 
-```bash
-# Login to Cloudflare
-npx wrangler login
+### D1 数据库错误
 
-# Create KV namespace
-npx wrangler kv:namespace create skills
-# Copy the ID to wrangler.toml
+- 确保已在 wrangler.toml 中配置 `DB_MEMORY` binding
+- 表结构会在首次写入时自动创建
 
-# (Optional) Create D1 database
-npx wrangler d1 create claw-memory
+### 会话不持久
 
-# Deploy
-npm run deploy
-```
+- 当前使用 D1 持久化（之前是内存存储）
+- Worker 重启不会丢失数据
+- 如需清理，在管理后台"会话管理"中删除
 
-### Set Secrets
-
-```bash
-npx wrangler secret put OPENAI_API_KEY
-npx wrangler secret put TELEGRAM_BOT_TOKEN
-```
-
-## Monitoring
-
-- **Logs**: `npx wrangler tail`
-- **Analytics**: Cloudflare Dashboard → Workers & Pages
-- **KV/D1**: Dashboard → Workers → Storage
-
-## Admin Panel
-
-Access the admin interface at: `https://your-worker.your-subdomain.workers.dev/admin`
-
-**Features**:
-- **Dashboard**: View statistics (sessions, messages, skills count)
-- **Sessions**: List all active sessions, search by user/chat ID, delete sessions
-- **Skills**: View loaded skills, reload skill cache, remove skills
-- **Configuration**: View current configuration (sanitized, no secrets)
-
-**Authentication**:
-- HTTP Basic Auth
-- Set `ADMIN_USERNAME` and `ADMIN_PASSWORD` via `wrangler secret put`
-
-**Example**:
-```bash
-npx wrangler secret put ADMIN_USERNAME
-# Enter: admin
-
-npx wrangler secret put ADMIN_PASSWORD
-# Enter: your-strong-password
-```
-
-## Web Chat Interface
-
-Access the chat UI at: `https://your-worker.your-subdomain.workers.dev/chat`
-
-**Features**:
-- Clean, modern chat interface
-- Real-time messaging
-- Session persistence (localStorage)
-- Responsive design (mobile-friendly)
-- Auto-scroll to latest messages
-
-**How it works**:
-1. Open `/chat` in browser
-2. Type a message and press Enter
-3. Messages are sent to `/chat/send` API
-4. Responses stream back instantly
-5. Session ID is saved in localStorage for continuity
-
-**Customization**:
-The UI is in `public/chat/index.html` - feel free to customize colors, branding, etc.
-
-## Roadmap
-
-- [x] Basic Worker with Telegram adapter
-- [x] Session management via Durable Objects
-- [x] Skill system with dynamic loading
-- [x] Admin panel with dashboard
-- [x] Web chat interface
-- [ ] D1 long-term memory with semantic search
-- [ ] Discord adapter (full implementation)
-- [ ] Feishu adapter
-- [ ] Subagent/Queue support for long tasks
-- [ ] Multi-provider LLM routing (auto-fallback)
-- [ ] Skills marketplace
-- [ ] User management for admin panel
-- [ ] API rate limiting
-- [ ] Message queuing for high throughput
-
-## License
+## 📝 许可证
 
 MIT
 
-## Credits
+## 🤝 贡献
 
-Inspired by [nanobot-ts](https://github.com/kobex95/nano-claw) and the OpenClaw ecosystem.
+欢迎提交 Issue 和 Pull Request！
+
+---
+
+**Made with ❤️ by Claw Team**
