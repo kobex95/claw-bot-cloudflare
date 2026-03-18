@@ -467,7 +467,7 @@ const ADMIN_HTML = `<!DOCTYPE html>
   </div>
   
   <script>
-    const API_BASE = '';
+    const API_BASE = '/admin';
     let authCredentials = null;
     
     // Check if already logged in

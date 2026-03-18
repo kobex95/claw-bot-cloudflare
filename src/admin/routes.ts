@@ -17,12 +17,19 @@ export interface DashboardStats {
 
 export async function handleDashboard(req: Request, env: Env): Promise<Response> {
   try {
+    console.log('[Dashboard] Request received');
+    
     if (!adminAuthRequired(req, env)) {
+      console.log('[Dashboard] Authentication failed');
       return getAuthChallenge();
     }
     
+    console.log('[Dashboard] Authentication successful');
+    
     // Gather statistics
     const stats = await collectStats(env);
+    
+    console.log('[Dashboard] Returning stats:', stats);
     
     return new Response(JSON.stringify(stats, null, 2), {
       headers: { 'Content-Type': 'application/json' },
@@ -32,6 +39,7 @@ export async function handleDashboard(req: Request, env: Env): Promise<Response>
     return new Response(JSON.stringify({
       error: 'dashboard_error',
       message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
     }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
@@ -41,7 +49,7 @@ export async function handleDashboard(req: Request, env: Env): Promise<Response>
 
 async function collectStats(env: Env): Promise<DashboardStats> {
   console.log('[Stats] Starting collection...');
-  
+
   // Count sessions (DO or memory-based estimate)
   let totalSessions = 0;
   try {
@@ -60,7 +68,7 @@ async function collectStats(env: Env): Promise<DashboardStats> {
     console.error('[Stats] Error counting sessions:', error);
     totalSessions = 0;
   }
-  
+
   // Count messages (if we store them)
   let totalMessages = 0;
   try {
@@ -82,7 +90,7 @@ async function collectStats(env: Env): Promise<DashboardStats> {
   } catch (error) {
     console.error('[Stats] Error counting messages:', error);
   }
-  
+
   // Count skills
   let totalSkills = 0;
   try {
@@ -93,9 +101,9 @@ async function collectStats(env: Env): Promise<DashboardStats> {
   } catch (error) {
     console.error('[Stats] Error counting skills:', error);
   }
-  
+
   console.log('[Stats] Collection complete:', { totalSessions, totalMessages, totalSkills });
-  
+
   return {
     totalSessions,
     activeSessions: Math.floor(totalSessions * 0.3), // Estimate
@@ -110,11 +118,11 @@ export async function handleSessions(req: Request, env: Env): Promise<Response> 
   if (!adminAuthRequired(req, env)) {
     return getAuthChallenge();
   }
-  
+
   const url = new URL(req.url);
   const pathParts = url.pathname.split('/').filter(Boolean);
   const sessionId = pathParts[pathParts.length - 1];
-  
+
   if (req.method === 'GET' && sessionId && sessionId !== 'sessions') {
     // Get specific session
     if (env.SESSION_DO) {
@@ -129,7 +137,7 @@ export async function handleSessions(req: Request, env: Env): Promise<Response> 
       });
     }
   }
-  
+
   if (req.method === 'GET') {
     // List all sessions (limited)
     if (env.SESSION_DO) {
@@ -172,7 +180,7 @@ export async function handleSessions(req: Request, env: Env): Promise<Response> 
       });
     }
   }
-  
+
   if (req.method === 'DELETE') {
     if (sessionId && sessionId !== 'sessions') {
       // Delete specific session
@@ -203,7 +211,7 @@ export async function handleSessions(req: Request, env: Env): Promise<Response> 
       }
     }
   }
-  
+
   return new Response('Method not allowed', { status: 405 });
 }
 
@@ -211,11 +219,11 @@ export async function handleSkills(req: Request, env: Env): Promise<Response> {
   if (!adminAuthRequired(req, env)) {
     return getAuthChallenge();
   }
-  
+
   const url = new URL(req.url);
   const pathParts = url.pathname.split('/').filter(Boolean);
   const skillName = pathParts[pathParts.length - 1];
-  
+
   if (req.method === 'GET') {
     // List all skills
     const skillsList = await env.KV_SKILLS.get('skills-list', 'json');
@@ -224,13 +232,13 @@ export async function handleSkills(req: Request, env: Env): Promise<Response> {
       headers: { 'Content-Type': 'application/json' },
     });
   }
-  
+
   if (req.method === 'POST') {
     // Reload skills from KV
     await loadSkillsFromKV(env);
     return new Response(JSON.stringify({ success: true }));
   }
-  
+
   if (req.method === 'DELETE') {
     // Delete a specific skill or all
     if (skillName && skillName !== 'skills') {
@@ -252,7 +260,7 @@ export async function handleSkills(req: Request, env: Env): Promise<Response> {
       return new Response(JSON.stringify({ success: true }));
     }
   }
-  
+
   return new Response('Method not allowed', { status: 405 });
 }
 
@@ -260,13 +268,13 @@ export async function handleConfig(req: Request, env: Env): Promise<Response> {
   if (!adminAuthRequired(req, env)) {
     return getAuthChallenge();
   }
-  
+
   // Debug: log environment variables (safely)
   console.log('[Config] ADMIN_USERNAME:', env.ADMIN_USERNAME ? 'set' : 'missing');
   console.log('[Config] ADMIN_PASSWORD:', env.ADMIN_PASSWORD ? 'set' : 'missing');
   console.log('[Config] ADMIN_USERNAME length:', env.ADMIN_USERNAME?.length);
   console.log('[Config] ADMIN_PASSWORD length:', env.ADMIN_PASSWORD?.length);
-  
+
   // Return sanitized config (no secrets)
   const config = {
     vars: {
@@ -285,7 +293,7 @@ export async function handleConfig(req: Request, env: Env): Promise<Response> {
       SESSION_DO: env.SESSION_DO ? 'configured' : undefined,
     },
   };
-  
+
   return new Response(JSON.stringify(config, null, 2), {
     headers: { 'Content-Type': 'application/json' },
   });
