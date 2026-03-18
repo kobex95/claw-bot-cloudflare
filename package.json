@@ -1,0 +1,40 @@
+{
+  "name": "claw-bot-cloudflare",
+  "version": "0.1.0",
+  "description": "Cloudflare Workers AI Assistant - nanobot-ts for Cloudflare",
+  "main": "src/index.ts",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --remote",
+    "deploy": "wrangler deploy",
+    "deploy:staging": "wrangler deploy --env staging",
+    "deploy:prod": "wrangler deploy --env production",
+    "test": "vitest",
+    "lint": "eslint src --ext .ts",
+    "format": "prettier --write src/",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "cloudflare-workers",
+    "ai-assistant",
+    "bot",
+    "openclaw"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@cloudflare/ai": "^1.0.0",
+    "zod": "^3.22.0",
+    "pino": "^8.0.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241022.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0",
+    "vitest": "^1.0.0",
+    "wrangler": "^3.60.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
