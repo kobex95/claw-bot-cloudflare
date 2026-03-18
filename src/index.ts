@@ -76,6 +76,11 @@ export default {
     const path = url.pathname;
     
     try {
+      // Handle favicon.ico (return empty to avoid 404 errors)
+      if (path === '/favicon.ico') {
+        return new Response('', { status: 204 });
+      }
+      
       // Route: Admin Panel
       if (path.startsWith('/admin')) {
         return handleAdminRequest(request, env);
