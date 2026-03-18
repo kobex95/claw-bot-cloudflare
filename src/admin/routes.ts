@@ -40,16 +40,21 @@ export async function handleDashboard(req: Request, env: Env): Promise<Response>
 }
 
 async function collectStats(env: Env): Promise<DashboardStats> {
+  console.log('[Stats] Starting collection...');
+  
   // Count sessions (DO or memory-based estimate)
   let totalSessions = 0;
   try {
+    console.log('[Stats] Counting sessions...');
     if (env.SESSION_DO) {
       const sessionList = await env.SESSION_DO.list();
       totalSessions = sessionList.length;
+      console.log('[Stats] Sessions via DO:', totalSessions);
     } else {
       // No DO - count from KV if we store session keys there
       const keys = await env.KV_SKILLS.list({ prefix: 'session:' });
       totalSessions = keys.keys.length;
+      console.log('[Stats] Sessions via KV:', totalSessions);
     }
   } catch (error) {
     console.error('[Stats] Error counting sessions:', error);
@@ -59,14 +64,21 @@ async function collectStats(env: Env): Promise<DashboardStats> {
   // Count messages (if we store them)
   let totalMessages = 0;
   try {
+    console.log('[Stats] Counting messages...');
     // If we store message counts per session in KV
     const keys = await env.KV_SKILLS.list({ prefix: 'msg-count:' });
+    console.log('[Stats] Found message count keys:', keys.keys.length);
     for (const key of keys.keys) {
-      const count = await env.KV_SKILLS.get(key.name, 'json');
-      if (typeof count === 'number') {
-        totalMessages += count;
+      try {
+        const count = await env.KV_SKILLS.get(key.name, 'json');
+        if (typeof count === 'number') {
+          totalMessages += count;
+        }
+      } catch (e) {
+        console.warn('[Stats] Error reading count for key:', key.name, e);
       }
     }
+    console.log('[Stats] Total messages:', totalMessages);
   } catch (error) {
     console.error('[Stats] Error counting messages:', error);
   }
@@ -74,11 +86,15 @@ async function collectStats(env: Env): Promise<DashboardStats> {
   // Count skills
   let totalSkills = 0;
   try {
+    console.log('[Stats] Counting skills...');
     const skillsList = await env.KV_SKILLS.get('skills-list', 'json');
     totalSkills = (skillsList as string[] | undefined)?.length || 0;
+    console.log('[Stats] Skills count:', totalSkills);
   } catch (error) {
     console.error('[Stats] Error counting skills:', error);
   }
+  
+  console.log('[Stats] Collection complete:', { totalSessions, totalMessages, totalSkills });
   
   return {
     totalSessions,
