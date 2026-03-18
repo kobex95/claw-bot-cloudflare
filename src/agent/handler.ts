@@ -6,6 +6,11 @@
 import { IncomingMessage, Session, Env, Skill, SkillContext } from '../types';
 import { loadSkills } from '../skills/loader';
 import { Memory } from '../memory/memory';
+import { 
+  OpenAICompatibleProvider, 
+  createModelScopeProvider, 
+  createIFlowProvider 
+} from '../providers/openai-compatible';
 
 export async function handleRequest(
   message: IncomingMessage,
@@ -84,15 +89,25 @@ async function generateResponse(
   env: Env,
   ctx: ExecutionContext
 ): Promise<string> {
-  // Try Cloudflare AI first
+  // Determine provider based on env vars
+  const providerType = env.LLM_PROVIDER || 'cloudflare';
+  const model = env.LLM_MODEL;
+
   try {
-    const response = await callCloudflareAI(messages, env);
-    return response;
+    switch (providerType) {
+      case 'iflow':
+        return await callIFlow(messages, env, model);
+      case 'modelscope':
+        return await callModelScope(messages, env, model);
+      case 'openai-compatible':
+        return await callOpenAICompatible(messages, env, model);
+      case 'cloudflare':
+      default:
+        return await callCloudflareAI(messages, env);
+    }
   } catch (error) {
-    console.error('Cloudflare AI failed:', error);
-    
-    // Fallback: simple echo
-    return `I'm sorry, I'm having trouble connecting to the AI service right now.`;
+    console.error(`LLM provider ${providerType} failed:`, error);
+    return `I'm sorry, I'm having trouble connecting to the AI service right now. Error: ${error instanceof Error ? error.message : String(error)}`;
   }
 }
 
@@ -100,36 +115,60 @@ async function callCloudflareAI(
   messages: Array<{ role: string; content: string }>,
   env: Env
 ): Promise<string> {
-  // For this demo, we'll use a simple fetch to OpenAI-compatible API
-  // In production, use the @cloudflare/ai library
-  
-  const apiKey = env.OPENAI_API_KEY;
+  // Use Cloudflare Workers AI binding if available
+  // This is a placeholder - in actual Cloudflare Workers, use @cloudflare/ai
+  throw new Error('Cloudflare AI provider not implemented in this custom build. Use iflow or modelscope instead.');
+}
+
+async function callIFlow(
+  messages: Array<{ role: string; content: string }>,
+  env: Env,
+  model?: string
+): Promise<string> {
+  const apiKey = env.IFLLOW_API_KEY;
   if (!apiKey) {
-    throw new Error('No LLM API key configured');
+    throw new Error('IFLLOW_API_KEY not set');
   }
+
+  const provider = createIFlowProvider(apiKey, model || 'gpt-4');
+  return await provider.chat(messages, { model });
+}
+
+async function callModelScope(
+  messages: Array<{ role: string; content: string }>,
+  env: Env,
+  model?: string
+): Promise<string> {
+  const apiKey = env.MODELSCOPE_API_KEY;
+  if (!apiKey) {
+    throw new Error('MODELSCOPE_API_KEY not set');
+  }
+
+  const provider = createModelScopeProvider(apiKey, model || 'qwen-turbo');
+  return await provider.chat(messages, { model });
+}
+
+async function callOpenAICompatible(
+  messages: Array<{ role: string; content: string }>,
+  env: Env,
+  model?: string
+): Promise<string> {
+  const apiKey = env.OPENAI_API_KEY;
+  const baseURL = env.LLM_BASE_URL;
   
-  // Use StepFun API (already configured in OpenClaw)
-  const response = await fetch('https://chatapi.stepfun.com/chatapi/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: 'step-3.5-flash',
-      messages: messages,
-      temperature: 0.7,
-      max_tokens: 1000,
-    }),
+  if (!apiKey || !baseURL) {
+    throw new Error('OPENAI_API_KEY and LLM_BASE_URL must be set for openai-compatible provider');
+  }
+
+  const provider = new OpenAICompatibleProvider('custom', {
+    baseURL,
+    apiKey,
+    model: model || 'gpt-3.5-turbo',
+    defaultTemperature: 0.7,
+    defaultMaxTokens: 2000,
   });
   
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`LLM API error: ${error}`);
-  }
-  
-  const data = await response.json();
-  return data.choices[0].message.content;
+  return await provider.chat(messages, { model });
 }
 
 function matchesTrigger(text: string, triggers: string[]): boolean {

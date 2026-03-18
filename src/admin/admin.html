@@ -1,12 +1,4 @@
-/**
- * Admin API Entry Point
- * Handles all /admin/* routes
- */
-
-import { handleDashboard, handleSessions, handleSkills, handleConfig } from './routes';
-
-// Embedded admin UI HTML (from public/admin/index.html)
-const ADMIN_HTML = `<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -163,28 +155,28 @@ const ADMIN_HTML = `<!DOCTYPE html>
     
     async function loadDashboard() {
       try {
-        const res = await fetch(\`\${API_BASE}/dashboard\`);
+        const res = await fetch(`${API_BASE}/dashboard`);
         const stats = await res.json();
-        document.getElementById('stats').innerHTML = \`
+        document.getElementById('stats').innerHTML = `
           <div class="stat-card">
             <h3>Total Sessions</h3>
-            <div class="value">\${stats.totalSessions}</div>
+            <div class="value">${stats.totalSessions}</div>
           </div>
           <div class="stat-card">
             <h3>Active Sessions</h3>
-            <div class="value">\${stats.activeSessions}</div>
+            <div class="value">${stats.activeSessions}</div>
           </div>
           <div class="stat-card">
             <h3>Total Messages</h3>
-            <div class="value">\${stats.totalMessages}</div>
+            <div class="value">${stats.totalMessages}</div>
           </div>
           <div class="stat-card">
             <h3>Loaded Skills</h3>
-            <div class="value">\${stats.totalSkills}</div>
+            <div class="value">${stats.totalSkills}</div>
           </div>
-        \`;
+        `;
       } catch (err) {
-        document.getElementById('stats').innerHTML = \`<div class="alert-error">Failed to load stats</div>\`;
+        document.getElementById('stats').innerHTML = `<div class="alert-error">Failed to load stats</div>`;
       }
     }
     
@@ -193,7 +185,7 @@ const ADMIN_HTML = `<!DOCTYPE html>
       tbody.innerHTML = '<tr><td colspan="6" class="loading">Loading sessions...</td></tr>';
       
       try {
-        const url = search ? \`\${API_BASE}/sessions?search=\${encodeURIComponent(search)}\` : \`\${API_BASE}/sessions\`;
+        const url = search ? `${API_BASE}/sessions?search=${encodeURIComponent(search)}` : `${API_BASE}/sessions`;
         const res = await fetch(url);
         const sessions = await res.json();
         
@@ -202,18 +194,18 @@ const ADMIN_HTML = `<!DOCTYPE html>
           return;
         }
         
-        tbody.innerHTML = sessions.map(s => \`
+        tbody.innerHTML = sessions.map(s => `
           <tr>
-            <td><code>\${s.id}</code></td>
-            <td>\${s.userId || '-'}</td>
-            <td>\${s.chatId || '-'}</td>
-            <td>\${s.messageCount}</td>
-            <td>\${new Date(s.updatedAt).toLocaleString()}</td>
+            <td><code>${s.id}</code></td>
+            <td>${s.userId || '-'}</td>
+            <td>${s.chatId || '-'}</td>
+            <td>${s.messageCount}</td>
+            <td>${new Date(s.updatedAt).toLocaleString()}</td>
             <td>
-              <button class="btn btn-danger btn-sm" onclick="deleteSession('\${s.id}')">Delete</button>
+              <button class="btn btn-danger btn-sm" onclick="deleteSession('${s.id}')">Delete</button>
             </td>
           </tr>
-        \`).join('');
+        `).join('');
       } catch (err) {
         tbody.innerHTML = '<tr><td colspan="6" class="alert-error">Failed to load sessions</td></tr>';
       }
@@ -223,7 +215,7 @@ const ADMIN_HTML = `<!DOCTYPE html>
       if (!confirm('Delete this session?')) return;
       
       try {
-        const res = await fetch(\`\${API_BASE}/sessions/\${sessionId}\`, { method: 'DELETE' });
+        const res = await fetch(`${API_BASE}/sessions/${sessionId}`, { method: 'DELETE' });
         if (res.ok) {
           loadSessions();
         } else {
@@ -238,7 +230,7 @@ const ADMIN_HTML = `<!DOCTYPE html>
       if (!confirm('Delete ALL sessions? This cannot be undone.')) return;
       
       try {
-        const res = await fetch(\`\${API_BASE}/sessions\`, { method: 'DELETE' });
+        const res = await fetch(`${API_BASE}/sessions`, { method: 'DELETE' });
         if (res.ok) {
           loadSessions();
         }
@@ -252,7 +244,7 @@ const ADMIN_HTML = `<!DOCTYPE html>
       tbody.innerHTML = '<tr><td colspan="5" class="loading">Loading skills...</td></tr>';
       
       try {
-        const res = await fetch(\`\${API_BASE}/skills\`);
+        const res = await fetch(`${API_BASE}/skills`);
         const skills = await res.json();
         
         if (skills.length === 0) {
@@ -260,27 +252,27 @@ const ADMIN_HTML = `<!DOCTYPE html>
           return;
         }
         
-        tbody.innerHTML = skills.map(s => \`
+        tbody.innerHTML = skills.map(s => `
           <tr>
-            <td><strong>\${s.name}</strong></td>
-            <td>\${s.description || '-'}</td>
-            <td>\${s.version || '-'}</td>
-            <td>\${s.triggers?.join(', ') || '-'}</td>
+            <td><strong>${s.name}</strong></td>
+            <td>${s.description || '-'}</td>
+            <td>${s.version || '-'}</td>
+            <td>${s.triggers?.join(', ') || '-'}</td>
             <td>
-              <button class="btn btn-danger btn-sm" onclick="deleteSkill('\${s.name}')">Remove</button>
+              <button class="btn btn-danger btn-sm" onclick="deleteSkill('${s.name}')">Remove</button>
             </td>
           </tr>
-        \`).join('');
+        `).join('');
       } catch (err) {
         tbody.innerHTML = '<tr><td colspan="5" class="alert-error">Failed to load skills</td></tr>';
       }
     }
     
     async function deleteSkill(name) {
-      if (!confirm(\`Remove skill "\${name}"?\`)) return;
+      if (!confirm(`Remove skill "${name}"?`)) return;
       
       try {
-        const res = await fetch(\`\${API_BASE}/skills\`, {
+        const res = await fetch(`${API_BASE}/skills`, {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name }),
@@ -297,7 +289,7 @@ const ADMIN_HTML = `<!DOCTYPE html>
     
     async function reloadSkills() {
       try {
-        const res = await fetch(\`\${API_BASE}/skills\`, { method: 'POST' });
+        const res = await fetch(`${API_BASE}/skills`, { method: 'POST' });
         if (res.ok) {
           alert('Skills reloaded');
           loadSkills();
@@ -310,9 +302,9 @@ const ADMIN_HTML = `<!DOCTYPE html>
     async function clearAllSkills() {
       if (!confirm('Remove ALL skills? This cannot be undone.')) return;
       
-      const skillsList = await fetch(\`\${API_BASE}/skills\`).then(r => r.json());
+      const skillsList = await fetch(`${API_BASE}/skills`).then(r => r.json());
       for (const skill of skillsList) {
-        await fetch(\`\${API_BASE}/skills\`, {
+        await fetch(`${API_BASE}/skills`, {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: skill.name }),
@@ -323,10 +315,10 @@ const ADMIN_HTML = `<!DOCTYPE html>
     
     async function loadConfig() {
       try {
-        const res = await fetch(\`\${API_BASE}/config\`);
+        const res = await fetch(`${API_BASE}/config`);
         const config = await res.json();
         document.getElementById('configOutput').innerHTML = 
-          \`<code>\${JSON.stringify(config, null, 2)}</code>\`;
+          `<code>${JSON.stringify(config, null, 2)}</code>`;
       } catch (err) {
         document.getElementById('configOutput').innerHTML = 'Failed to load config';
       }
@@ -336,43 +328,4 @@ const ADMIN_HTML = `<!DOCTYPE html>
     loadDashboard();
   </script>
 </body>
-</html>`;
-
-export async function handleAdminRequest(request: Request, env: Env): Promise<Response> {
-  const url = new URL(request.url);
-  
-  // Route based on path
-  const path = url.pathname.replace(/^\/admin/, '');
-  
-  try {
-    if (path === '' || path === '/') {
-      // Serve admin UI
-      return new Response(ADMIN_HTML, {
-        headers: { 'Content-Type': 'text/html; charset=utf-8' },
-      });
-    }
-    
-    if (path === '/dashboard' || path === '/stats') {
-      return handleDashboard(request, env);
-    }
-    
-    if (path.startsWith('/sessions')) {
-      return handleSessions(request, env);
-    }
-    
-    if (path.startsWith('/skills')) {
-      return handleSkills(request, env);
-    }
-    
-    if (path === '/config') {
-      return handleConfig(request, env);
-    }
-    
-    return new Response('Not found', { status: 404 });
-  } catch (error) {
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
-}
+</html>

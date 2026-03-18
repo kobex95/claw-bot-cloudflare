@@ -31,28 +31,29 @@ crons = ["*/5 * * * *"]  # Every 5 minutes
 
 # Variables (use secrets in production)
 [vars]
-# OpenAI API key for embedding (if using external)
-# OPENAI_API_KEY = "sk-..."
-# Telegram bot token
+# LLM Provider configuration
+LLM_PROVIDER = "cloudflare"  # Options: "cloudflare" | "iflow" | "modelscope" | "openai-compatible"
+LLM_MODEL = ""               # Model name (provider-specific)
+LLM_BASE_URL = ""            # Required for openai-compatible provider
+
+# API Keys (set via wrangler secret)
+# OPENAI_API_KEY = ""       # For StepFun/OpenAI-compatible
+# IFLLOW_API_KEY = ""       # For iFlow
+# MODELSCOPE_API_KEY = ""   # For ModelScope
+
+# Optional for channel adapters
 # TELEGRAM_BOT_TOKEN = ""
-# Discord bot token
 # DISCORD_BOT_TOKEN = ""
-# Admin credentials (change these!)
+
+# Admin panel
 # ADMIN_USERNAME = "admin"
 # ADMIN_PASSWORD = "your-secure-password"
+
+# Feishu integration
+# FEISHU_APP_ID = ""
+# FEISHU_APP_SECRET = ""
+# FEISHU_ENCRYPT_KEY = ""
 
 # Build configuration
 [build]
 command = "npm run build"
-
-# Site configuration - serves static files
-# This enables serving static assets from public/ directory
-# Routes will be:
-# /chat/* -> public/chat/*
-# /admin/* -> public/admin/*
-[[routes]]
-pattern = "chat"
-custom_domain = false
-[[routes]]
-pattern = "admin"
-custom_domain = false

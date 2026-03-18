@@ -16,7 +16,7 @@ export interface DashboardStats {
 }
 
 export async function handleDashboard(req: Request, env: Env): Promise<Response> {
-  if (!adminAuthRequired(req)) {
+  if (!adminAuthRequired(req, env)) {
     return getAuthChallenge();
   }
   
@@ -60,7 +60,7 @@ async function collectStats(env: Env): Promise<DashboardStats> {
 }
 
 export async function handleSessions(req: Request, env: Env): Promise<Response> {
-  if (!adminAuthRequired(req)) {
+  if (!adminAuthRequired(req, env)) {
     return getAuthChallenge();
   }
   
@@ -112,7 +112,7 @@ export async function handleSessions(req: Request, env: Env): Promise<Response> 
 }
 
 export async function handleSkills(req: Request, env: Env): Promise<Response> {
-  if (!adminAuthRequired(req)) {
+  if (!adminAuthRequired(req, env)) {
     return getAuthChallenge();
   }
   
@@ -169,14 +169,14 @@ export async function handleSkills(req: Request, env: Env): Promise<Response> {
 }
 
 export async function handleConfig(req: Request, env: Env): Promise<Response> {
-  if (!adminAuthRequired(req)) {
+  if (!adminAuthRequired(req, env)) {
     return getAuthChallenge();
   }
   
   // Return sanitized configuration (no secrets)
   const config = {
     llm: {
-      provider: process.env.OPENAI_API_KEY ? 'OpenAI/StepFun' : 'Cloudflare AI',
+      provider: env.OPENAI_API_KEY ? 'OpenAI/StepFun' : 'Cloudflare AI',
       model: 'step-3.5-flash',
     },
     storage: {

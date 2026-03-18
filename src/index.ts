@@ -20,6 +20,15 @@ export interface Env {
   OPENAI_API_KEY?: string;
   TELEGRAM_BOT_TOKEN?: string;
   DISCORD_BOT_TOKEN?: string;
+  FEISHU_APP_ID?: string;
+  FEISHU_APP_SECRET?: string;
+  FEISHU_ENCRYPT_KEY?: string;
+  // New providers
+  IFLLOW_API_KEY?: string;
+  MODELSCOPE_API_KEY?: string;
+  LLM_PROVIDER?: 'cloudflare' | 'iflow' | 'modelscope' | 'openai-compatible';
+  LLM_MODEL?: string;
+  LLM_BASE_URL?: string;
 }
 
 export default {
@@ -40,6 +49,58 @@ export default {
       // Route: Chat Web UI
       if (path.startsWith('/chat')) {
         return handleChatRequest(request, env, ctx);
+      }
+      
+      // Route: Feishu webhook
+      if (path.startsWith('/feishu')) {
+        const adapter = new (await import('./channels/feishu')).FeishuAdapter(env);
+        const verified = await adapter.verify(request);
+        if (!verified) {
+          return new Response('Invalid signature', { status: 401 });
+        }
+        const incoming = await adapter.parse(request);
+        if (!incoming) {
+          return new Response('Bad request', { status: 400 });
+        }
+        // Get or create session
+        const sessionId = `${incoming.chatId}:${incoming.userId}`;
+        const sessionDO = env.SESSION_DO.get(sessionId);
+        const session = await getSession(sessionDO, env);
+        // Add incoming message
+        session.messages.push({
+          id: incoming.userId + Date.now(),
+          direction: 'in',
+          type: incoming.type,
+          content: incoming.text,
+          metadata: {},
+          timestamp: Date.now(),
+          channel: 'feishu',
+          userId: incoming.userId,
+          chatId: incoming.chatId,
+        });
+        const MAX_MESSAGES = 50;
+        if (session.messages.length > MAX_MESSAGES) {
+          session.messages = session.messages.slice(-MAX_MESSAGES);
+        }
+        // Process
+        const response = await handleRequest(incoming, session, env, ctx);
+        // Add outgoing
+        session.messages.push({
+          id: 'out-' + Date.now(),
+          direction: 'out',
+          type: 'text',
+          content: response,
+          metadata: {},
+          timestamp: Date.now(),
+          channel: 'feishu',
+          userId: incoming.userId,
+          chatId: incoming.chatId,
+        });
+        await sessionDO.storage.put('session', session);
+        ctx.waitUntil(sessionDO.storage.delete('session', { expirationTtl: 60 * 60 * 24 * 7 }));
+        // Send
+        const sendAdapter = adapter as any;
+        return await sendAdapter.send(incoming.chatId, { text: response });
       }
       
       // Route: Bot API (Telegram, Discord, etc.)

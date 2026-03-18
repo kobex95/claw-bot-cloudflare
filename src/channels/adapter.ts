@@ -7,6 +7,7 @@ import { ChannelAdapter, ChannelType, Env } from '../types';
 import { TelegramAdapter } from './telegram';
 import { DiscordAdapter } from './discord';
 import { CloudflareAdapter } from './cloudflare';
+import { FeishuAdapter } from './feishu';
 
 export async function getChannelAdapter(
   request: Request,
@@ -29,10 +30,11 @@ export async function getChannelAdapter(
     return new DiscordAdapter(env);
   }
   
-  // Cloudflare AI Chat (direct)
-  if (url.pathname.startsWith('/chat') ||
-      headers.has('CF-Connecting-IP')) {
-    return new CloudflareAdapter(env);
+  // Feishu webhook
+  if (headers.has('X-Lark-Signature') ||
+      headers.has('X-Lark-Request-Timestamp') ||
+      url.pathname.startsWith('/feishu')) {
+    return new FeishuAdapter(env);
   }
   
   // Check custom header
@@ -48,28 +50,4 @@ export async function getChannelAdapter(
   }
   
   return null;
-}
-
-// Placeholder for Feishu adapter (to be implemented)
-class FeishuAdapter implements ChannelAdapter {
-  type = 'feishu' as ChannelType;
-  
-  constructor(private env: Env) {}
-  
-  async verify(req: Request): Promise<boolean> {
-    // TODO: Implement Feishu webhook verification
-    return true;
-  }
-  
-  async parse(req: Request): Promise<any> {
-    throw new Error('Feishu adapter not implemented yet');
-  }
-  
-  async send(chatId: string, message: any): Promise<Response> {
-    throw new Error('Feishu adapter not implemented yet');
-  }
-  
-  async setupWebhook(url: string): Promise<void> {
-    throw new Error('Feishu adapter not implemented yet');
-  }
 }
