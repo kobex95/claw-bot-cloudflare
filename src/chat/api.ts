@@ -3,9 +3,204 @@
  * Handles /chat/* endpoints for the web chat interface
  */
 
-import { Env, IncomingMessage, Session, Memory } from '../types';
-import { getSession } from '../memory/session';
+import { Env, IncomingMessage, Session } from '../types';
+import { getSession } from '../memory/SessionDO';
 import { handleRequest } from '../agent/handler';
+
+// Embedded chat UI HTML (from public/chat/index.html)
+const CHAT_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Claw Bot - Cloudflare Workers AI Assistant</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f2f5; height: 100vh; display: flex; flex-direction: column; }
+    
+    /* Header */
+    header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 1rem; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+    .logo { font-size: 1.5rem; font-weight: bold; display: flex; align-items: center; gap: 10px; }
+    .logo span { font-size: 1.5rem; }
+    .admin-link { background: rgba(255,255,255,0.2); padding: 0.5rem 1rem; border-radius: 4px; color: white; text-decoration: none; font-size: 0.875rem; }
+    
+    /* Chat Container */
+    .chat-container { flex: 1; display: flex; flex-direction: column; max-width: 900px; margin: 0 auto; width: 100%; background: white; box-shadow: 0 0 20px rgba(0,0,0,0.1); }
+    
+    /* Messages */
+    .messages { flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: 1rem; }
+    .message { max-width: 75%; padding: 0.75rem 1rem; border-radius: 18px; line-height: 1.5; position: relative; animation: fadeIn 0.3s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    
+    .message.user { align-self: flex-end; background: #667eea; color: white; border-bottom-right-radius: 4px; }
+    .message.assistant { align-self: flex-start; background: #e9ecef; color: #333; border-bottom-left-radius: 4px; }
+    .message .time { font-size: 0.7rem; opacity: 0.7; margin-top: 0.25rem; text-align: right; }
+    .message.assistant .time { text-align: left; }
+    
+    /* Input Area */
+    .input-area { padding: 1rem; border-top: 1px solid #e9ecef; display: flex; gap: 10px; background: white; }
+    .input-area input { flex: 1; padding: 0.75rem 1rem; border: 1px solid #ddd; border-radius: 24px; font-size: 1rem; outline: none; transition: border-color 0.2s; }
+    .input-area input:focus { border-color: #667eea; }
+    .input-area button { background: #667eea; color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 24px; cursor: pointer; font-size: 1rem; font-weight: 500; transition: background 0.2s; }
+    .input-area button:hover { background: #5a67d8; }
+    .input-area button:disabled { background: #ccc; cursor: not-allowed; }
+    
+    /* Typing Indicator */
+    .typing { display: flex; gap: 4px; padding: 1rem; }
+    .typing span { width: 8px; height: 8px; background: #bbb; border-radius: 50%; animation: bounce 1.4s infinite ease-in-out; }
+    .typing span:nth-child(1) { animation-delay: -0.32s; }
+    .typing span:nth-child(2) { animation-delay: -0.16s; }
+    @keyframes bounce { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1); } }
+    
+    /* Responsive */
+    @media (max-width: 600px) {
+      .chat-container { height: 100vh; max-width: 100%; border-radius: 0; }
+      .message { max-width: 85%; }
+    }
+    
+    /* Error */
+    .error { background: #fee; color: #c33; padding: 0.5rem; border-radius: 4px; margin: 1rem; text-align: center; }
+    
+    /* Welcome */
+    .welcome { text-align: center; padding: 2rem; color: #666; }
+    .welcome h2 { margin-bottom: 1rem; color: #333; }
+    .welcome p { margin-bottom: 0.5rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo">
+      <span>🤖</span>
+      <span>Claw Bot</span>
+    </div>
+    <a href="/admin" class="admin-link">Admin Panel</a>
+  </header>
+  
+  <div class="chat-container">
+    <div class="messages" id="messages">
+      <div class="welcome">
+        <h2>👋 Welcome to Claw Bot</h2>
+        <p>I'm an AI assistant powered by Cloudflare Workers.</p>
+        <p>Type a message to get started!</p>
+        <p style="font-size: 0.875rem; color: #999; margin-top: 1rem;">
+          Skills available: /echo, /calc, and more...
+        </p>
+      </div>
+    </div>
+    
+    <div class="input-area">
+      <input type="text" id="messageInput" placeholder="Type your message..." autocomplete="off">
+      <button id="sendBtn" onclick="sendMessage()">Send</button>
+    </div>
+  </div>
+  
+  <script>
+    const messagesDiv = document.getElementById('messages');
+    const input = document.getElementById('messageInput');
+    const sendBtn = document.getElementById('sendBtn');
+    let sessionId = localStorage.getItem('sessionId') || generateSessionId();
+    let messageId = 0;
+    
+    function generateSessionId() {
+      return 'session_' + Math.random().toString(36).substr(2, 9);
+    }
+    
+    function addMessage(text, isUser = false) {
+      const msg = document.createElement('div');
+      msg.className = \`message \${isUser ? 'user' : 'assistant'}\`;
+      msg.innerHTML = \`
+        \${escapeHtml(text)}
+        <div class="time">\${new Date().toLocaleTimeString()}</div>
+      \`;
+      messagesDiv.appendChild(msg);
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+    
+    function showTyping() {
+      const typing = document.createElement('div');
+      typing.className = 'message assistant typing';
+      typing.id = 'typing';
+      typing.innerHTML = \`
+        <span></span>
+        <span></span>
+        <span></span>
+      \`;
+      messagesDiv.appendChild(typing);
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+    
+    function hideTyping() {
+      const typing = document.getElementById('typing');
+      if (typing) typing.remove();
+    }
+    
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+    
+    async function sendMessage() {
+      const text = input.value.trim();
+      if (!text) return;
+      
+      input.value = '';
+      sendBtn.disabled = true;
+      addMessage(text, true);
+      showTyping();
+      
+      try {
+        const res = await fetch('/chat/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            message: text,
+            sessionId: sessionId,
+          }),
+        });
+        
+        hideTyping();
+        
+        if (!res.ok) {
+          const err = await res.text();
+          addMessage(\`Error: \${err}\`, false);
+          return;
+        }
+        
+        const data = await res.json();
+        addMessage(data.reply || data.message || 'No response', false);
+        
+        // Update session ID if provided (for new sessions)
+        if (data.sessionId) {
+          sessionId = data.sessionId;
+          localStorage.setItem('sessionId', sessionId);
+        }
+        
+      } catch (err) {
+        hideTyping();
+        addMessage(\`Network error: \${err.message}\`, false);
+      } finally {
+        sendBtn.disabled = false;
+        input.focus();
+      }
+    }
+    
+    // Event listeners
+    input.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+    
+    // Load previous session from localStorage (optional enhancement)
+    // Could fetch previous messages on page load
+    
+    // Focus input
+    input.focus();
+  </script>
+</body>
+</html>`;
 
 export async function handleChatRequest(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const url = new URL(request.url);
@@ -13,7 +208,9 @@ export async function handleChatRequest(request: Request, env: Env, ctx: Executi
   
   if (path === '' || path === '/') {
     // Serve chat UI
-    return await fetchChatUI();
+    return new Response(CHAT_HTML, {
+      headers: { 'Content-Type': 'text/html; charset=utf-8' },
+    });
   }
   
   if (path === '/send' && request.method === 'POST') {
@@ -37,21 +234,6 @@ export async function handleChatRequest(request: Request, env: Env, ctx: Executi
   }
   
   return new Response('Not found', { status: 404 });
-}
-
-async function fetchChatUI(): Promise<Response> {
-  // In production with Sites, this would serve from public/chat/
-  // For now, we'll serve the HTML directly
-  const html = `
-<!DOCTYPE html>
-<html>
-<head><title>Claw Bot Chat</title></head>
-<body>
-  <h1>Chat UI would be served here</h1>
-  <p>Configure Sites binding in wrangler.toml to serve static files.</p>
-</body>
-</html>`;
-  return new Response(html, { headers: { 'Content-Type': 'text/html' } });
 }
 
 async function handleChatMessage(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
