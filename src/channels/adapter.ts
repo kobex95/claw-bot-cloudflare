@@ -29,12 +29,6 @@ export async function getChannelAdapter(
     return new DiscordAdapter(env);
   }
   
-  // Cloudflare AI Chat (direct)
-  if (url.pathname.startsWith('/chat') ||
-      headers.has('CF-Connecting-IP')) {
-    return new CloudflareAdapter(env);
-  }
-  
   // Check custom header
   const channel = headers.get('X-Channel-Type');
   if (channel === 'telegram') {
