@@ -16,19 +16,31 @@ export interface DashboardStats {
 }
 
 export async function handleDashboard(req: Request, env: Env): Promise<Response> {
-  if (!adminAuthRequired(req, env)) {
-    console.log('[Dashboard] Authentication failed');
-    return getAuthChallenge();
+  try {
+    if (!adminAuthRequired(req, env)) {
+      console.log('[Dashboard] Authentication failed');
+      return getAuthChallenge();
+    }
+    
+    console.log('[Dashboard] Authentication successful');
+    
+    // Gather statistics
+    const stats = await collectStats(env);
+    
+    return new Response(JSON.stringify(stats, null, 2), {
+      headers: { 'Content-Type': 'application/json' },
+    });
+  } catch (error) {
+    console.error('[Dashboard] Error:', error);
+    return new Response(JSON.stringify({
+      error: 'Dashboard error',
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
   }
-  
-  console.log('[Dashboard] Authentication successful');
-  
-  // Gather statistics
-  const stats = await collectStats(env);
-  
-  return new Response(JSON.stringify(stats, null, 2), {
-    headers: { 'Content-Type': 'application/json' },
-  });
 }
 
 async function collectStats(env: Env): Promise<DashboardStats> {
@@ -44,7 +56,7 @@ async function collectStats(env: Env): Promise<DashboardStats> {
       totalSessions = keys.keys.length;
     }
   } catch (error) {
-    console.error('Error counting sessions:', error);
+    console.error('[Stats] Error counting sessions:', error);
     totalSessions = 0;
   }
   
@@ -60,7 +72,7 @@ async function collectStats(env: Env): Promise<DashboardStats> {
       }
     }
   } catch (error) {
-    console.error('Error counting messages:', error);
+    console.error('[Stats] Error counting messages:', error);
   }
   
   // Count skills
@@ -69,7 +81,7 @@ async function collectStats(env: Env): Promise<DashboardStats> {
     const skillsList = await env.KV_SKILLS.get('skills-list', 'json');
     totalSkills = (skillsList as string[] | undefined)?.length || 0;
   } catch (error) {
-    console.error('Error counting skills:', error);
+    console.error('[Stats] Error counting skills:', error);
   }
   
   return {
