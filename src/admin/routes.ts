@@ -5,6 +5,7 @@
 
 import { Env } from '../types';
 import { adminAuthRequired, getAuthChallenge } from './auth';
+import { listSessionsD1, countAllSessionsD1, countAllMessagesD1, deleteSessionD1 } from '../memory/D1Session';
 
 export interface DashboardStats {
   totalSessions: number;
@@ -29,33 +30,51 @@ export async function handleDashboard(req: Request, env: Env): Promise<Response>
 }
 
 async function collectStats(env: Env): Promise<DashboardStats> {
-  // Count sessions from Durable Object namespace (approximate)
-  // In production, you'd maintain counters in KV
-  const sessionList = await env.SESSION_DO.list();
-  const totalSessions = sessionList.length;
-  
-  // Count messages from KV (if stored)
+  let totalSessions = 0;
   let totalMessages = 0;
+  let totalSkills = 0;
+  
+  // Count sessions from D1
   try {
-    const messageKeys = await env.KV_SKILLS.list<{ count: number }>({ 
-      prefix: 'msg-count:' 
-    });
-    totalMessages = messageKeys.keys.reduce((sum, key) => sum + (key.value?.count || 0), 0);
-  } catch {
-    totalMessages = 0;
+    totalSessions = await countAllSessionsD1(env);
+  } catch (error) {
+    console.error('[Stats] Error counting sessions:', error);
   }
   
-  // Count skills
-  const skillsList = await env.KV_SKILLS.get('skills-list', 'json');
-  const totalSkills = (skillsList as string[] | undefined)?.length || 0;
+  // Count messages from D1
+  try {
+    totalMessages = await countAllMessagesD1(env);
+  } catch (error) {
+    console.error('[Stats] Error counting messages:', error);
+  }
+  
+  // Count skills from KV
+  try {
+    const skillsList = await env.KV_SKILLS.get('skills-list', 'json');
+    totalSkills = (skillsList as string[] | undefined)?.length || 0;
+  } catch (error) {
+    console.error('[Stats] Error counting skills:', error);
+  }
+  
+  // Estimate active sessions (sessions updated in last 24h)
+  let activeSessions = 0;
+  try {
+    const result = await env.DB_MEMORY.prepare(
+      'SELECT COUNT(*) as count FROM sessions WHERE updated_at > ?'
+    ).bind(Date.now() - 24 * 60 * 60 * 1000).first();
+    activeSessions = result?.count || 0;
+  } catch (error) {
+    console.error('[Stats] Error counting active sessions:', error);
+    activeSessions = Math.floor(totalSessions * 0.3);
+  }
   
   return {
     totalSessions,
-    activeSessions: Math.floor(totalSessions * 0.3), // Estimate
+    activeSessions,
     totalMessages,
     totalSkills,
-    uptime: 'N/A', // Would need to track worker start time
-    lastDeployed: new Date().toISOString(), // Placeholder
+    uptime: 'N/A',
+    lastDeployed: new Date().toISOString(),
   };
 }
 
@@ -65,50 +84,72 @@ export async function handleSessions(req: Request, env: Env): Promise<Response> 
   }
   
   const url = new URL(req.url);
-  const sessionId = url.pathname.split('/').pop();
-  
-  if (req.method === 'GET' && sessionId) {
-    // Get specific session
-    const sessionDO = env.SESSION_DO.get(sessionId);
-    const session = await sessionDO.fetch(new Request('http://session/session'));
-    return session;
-  }
+  const pathParts = url.pathname.split('/').filter(Boolean);
+  const sessionId = pathParts[pathParts.length - 1];
   
   if (req.method === 'GET') {
-    // List all sessions (limited)
-    const sessionList = await env.SESSION_DO.list();
-    const sessions: any[] = [];
-    
-    for (const info of sessionList.slice(0, 100)) { // Limit to 100
-      const sessionDO = env.SESSION_DO.get(info.id);
-      const res = await sessionDO.fetch(new Request('http://session/session'));
-      if (res.ok) {
-        const session = await res.json();
-        sessions.push({
-          id: info.id,
-          userId: session?.userId,
-          chatId: session?.chatId,
-          messageCount: session?.messages?.length || 0,
-          updatedAt: session?.updatedAt,
+    if (sessionId && sessionId !== 'sessions') {
+      // Get specific session
+      try {
+        const { getSessionD1 } = await import('../memory/D1Session');
+        const session = await getSessionD1(sessionId, env);
+        if (session) {
+          return new Response(JSON.stringify(session), {
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        return new Response(JSON.stringify({ error: 'Session not found' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      } catch (error) {
+        return new Response(JSON.stringify({ error: 'Failed to get session' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
         });
       }
     }
     
-    return new Response(JSON.stringify(sessions, null, 2), {
-      headers: { 'Content-Type': 'application/json' },
-    });
+    // List all sessions
+    try {
+      const sessions = await listSessionsD1(env);
+      return new Response(JSON.stringify(sessions), {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    } catch (error) {
+      return new Response(JSON.stringify([]), {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
   }
   
-  if (req.method === 'DELETE' && sessionId) {
-    // Delete specific session
-    const sessionDO = env.SESSION_DO.get(sessionId);
-    await sessionDO.fetch(new Request('http://session', { method: 'DELETE' }));
-    return new Response(JSON.stringify({ success: true }), {
-      headers: { 'Content-Type': 'application/json' },
-    });
+  if (req.method === 'DELETE') {
+    if (sessionId && sessionId !== 'sessions') {
+      // Delete specific session
+      try {
+        await deleteSessionD1(sessionId, env);
+        return new Response(JSON.stringify({ success: true }));
+      } catch (error) {
+        return new Response(JSON.stringify({ error: 'Failed to delete session' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+    } else {
+      // Clear all sessions
+      try {
+        await env.DB_MEMORY.prepare('DELETE FROM sessions').run();
+        return new Response(JSON.stringify({ success: true }));
+      } catch (error) {
+        return new Response(JSON.stringify({ error: 'Failed to clear sessions' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+    }
   }
   
-  return new Response('Not found', { status: 404 });
+  return new Response('Method not allowed', { status: 405 });
 }
 
 export async function handleSkills(req: Request, env: Env): Promise<Response> {
@@ -116,53 +157,41 @@ export async function handleSkills(req: Request, env: Env): Promise<Response> {
     return getAuthChallenge();
   }
   
-  const skillsList = await env.KV_SKILLS.get('skills-list', 'json') || [];
-  
   if (req.method === 'GET') {
-    // List all skills with details
-    const skills = await Promise.all(
-      (skillsList as string[]).map(async (name) => {
-        const skill = await env.KV_SKILLS.get(`skill:${name}`, 'json');
-        return skill;
-      })
-    );
-    
-    return new Response(JSON.stringify(skills, null, 2), {
+    const skillsList = await env.KV_SKILLS.get('skills-list', 'json');
+    const skills = (skillsList as any[] | undefined) || [];
+    return new Response(JSON.stringify(skills), {
       headers: { 'Content-Type': 'application/json' },
     });
   }
   
   if (req.method === 'POST') {
-    // Reload skills from KV (invalidate cache)
-    // In a real implementation, you'd have a cache layer
-    return new Response(JSON.stringify({ 
-      success: true, 
-      message: 'Skills cache cleared' 
-    }), {
-      headers: { 'Content-Type': 'application/json' },
-    });
+    // Reload skills
+    console.log('Skills reload requested');
+    return new Response(JSON.stringify({ success: true }));
   }
   
   if (req.method === 'DELETE') {
-    // Remove a skill
-    const body = await req.json();
-    const { name } = body;
+    const url = new URL(req.url);
+    const pathParts = url.pathname.split('/').filter(Boolean);
+    const skillName = pathParts[pathParts.length - 1];
     
-    if (!name || !skillsList.includes(name)) {
-      return new Response(JSON.stringify({ error: 'Skill not found' }), {
-        status: 404,
-        headers: { 'Content-Type': 'application/json' },
-      });
+    if (skillName && skillName !== 'skills') {
+      const skillsList = await env.KV_SKILLS.get('skills-list', 'json');
+      const skills = (skillsList as any[] | undefined) || [];
+      const filtered = skills.filter(s => s.name !== skillName);
+      await env.KV_SKILLS.put('skills-list', JSON.stringify(filtered));
+      await env.KV_SKILLS.delete('skill:' + skillName);
+      return new Response(JSON.stringify({ success: true }));
+    } else {
+      const skillsList = await env.KV_SKILLS.get('skills-list', 'json');
+      const skills = (skillsList as any[] | undefined) || [];
+      for (const skill of skills) {
+        await env.KV_SKILLS.delete('skill:' + skill.name);
+      }
+      await env.KV_SKILLS.delete('skills-list');
+      return new Response(JSON.stringify({ success: true }));
     }
-    
-    // Remove from list
-    const newList = (skillsList as string[]).filter((n) => n !== name);
-    await env.KV_SKILLS.put('skills-list', JSON.stringify(newList));
-    await env.KV_SKILLS.delete(`skill:${name}`);
-    
-    return new Response(JSON.stringify({ success: true }), {
-      headers: { 'Content-Type': 'application/json' },
-    });
   }
   
   return new Response('Method not allowed', { status: 405 });
@@ -173,25 +202,19 @@ export async function handleConfig(req: Request, env: Env): Promise<Response> {
     return getAuthChallenge();
   }
   
-  // Return sanitized configuration (no secrets)
   const config = {
-    llm: {
-      provider: env.OPENAI_API_KEY ? 'OpenAI/StepFun' : 'Cloudflare AI',
-      model: 'step-3.5-flash',
+    vars: {
+      LLM_PROVIDER: env.LLM_PROVIDER,
+      LLM_MODEL: env.LLM_MODEL,
+      LLM_BASE_URL: env.LLM_BASE_URL ? '***' : undefined,
+      OPENAI_API_KEY: env.OPENAI_API_KEY ? '***' : undefined,
+      ADMIN_USERNAME: env.ADMIN_USERNAME,
+      ADMIN_PASSWORD: env.ADMIN_PASSWORD ? '***' : undefined,
     },
-    storage: {
-      kvBound: !!env.KV_SKILLS,
-      d1Bound: !!env.DB_MEMORY,
-      doBound: !!env.SESSION_DO,
-    },
-    features: {
-      autoCapture: true,
-      autoRecall: true,
-      maxSessionMessages: 50,
-    },
-    limits: {
-      maxMessagesPerSession: 50,
-      executionTimeout: 30, // seconds
+    bindings: {
+      KV_SKILLS: env.KV_SKILLS ? 'configured' : undefined,
+      DB_MEMORY: env.DB_MEMORY ? 'configured' : undefined,
+      SESSION_DO: env.SESSION_DO ? 'configured' : undefined,
     },
   };
   
