@@ -1,0 +1,58 @@
+name = "claw-bot-cloudflare"
+main = "src/index.ts"
+compatibility_date = "2025-03-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Development environment
+[env.dev]
+# No durable objects in dev (use mock)
+
+# Production environment
+[env.production]
+# Durable Object for session management
+[[durable_objects.bindings]]
+name = "SESSION_DO"
+class_name = "SessionDO"
+
+# KV namespace for skills storage
+[[kv_namespaces]]
+binding = "KV_SKILLS"
+id = "your-kv-namespace-id"  # Replace after creating KV
+
+# D1 database for long-term memory
+[[d1_databases]]
+binding = "DB_MEMORY"
+database_name = "claw-memory"
+database_id = "your-d1-database-id"  # Replace after creating D1
+
+# Cron triggers for heartbeat and maintenance
+[triggers]
+crons = ["*/5 * * * *"]  # Every 5 minutes
+
+# Variables (use secrets in production)
+[vars]
+# OpenAI API key for embedding (if using external)
+# OPENAI_API_KEY = "sk-..."
+# Telegram bot token
+# TELEGRAM_BOT_TOKEN = ""
+# Discord bot token
+# DISCORD_BOT_TOKEN = ""
+# Admin credentials (change these!)
+# ADMIN_USERNAME = "admin"
+# ADMIN_PASSWORD = "your-secure-password"
+
+# Build configuration
+[build]
+command = "npm run build"
+
+# Site configuration - serves static files
+# This enables serving static assets from public/ directory
+# Routes will be:
+# /chat/* -> public/chat/*
+# /admin/* -> public/admin/*
+[[routes]]
+pattern = "chat"
+custom_domain = false
+[[routes]]
+pattern = "admin"
+custom_domain = false
