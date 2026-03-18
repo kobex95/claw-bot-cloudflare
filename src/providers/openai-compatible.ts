@@ -59,6 +59,12 @@ export class OpenAICompatibleProvider implements LLMProvider {
     }
 
     const data = await response.json();
+    
+    // Safely extract content
+    if (!data.choices || !data.choices[0] || !data.choices[0].message || data.choices[0].message.content === undefined) {
+      throw new Error(`Invalid response format: ${JSON.stringify(data)}`);
+    }
+    
     return data.choices[0].message.content;
   }
 
