@@ -18,11 +18,8 @@ export interface DashboardStats {
 export async function handleDashboard(req: Request, env: Env): Promise<Response> {
   try {
     if (!adminAuthRequired(req, env)) {
-      console.log('[Dashboard] Authentication failed');
       return getAuthChallenge();
     }
-    
-    console.log('[Dashboard] Authentication successful');
     
     // Gather statistics
     const stats = await collectStats(env);
@@ -33,9 +30,8 @@ export async function handleDashboard(req: Request, env: Env): Promise<Response>
   } catch (error) {
     console.error('[Dashboard] Error:', error);
     return new Response(JSON.stringify({
-      error: 'Dashboard error',
+      error: 'dashboard_error',
       message: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
     }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
