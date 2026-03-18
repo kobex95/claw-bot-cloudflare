@@ -17,8 +17,11 @@ export interface DashboardStats {
 
 export async function handleDashboard(req: Request, env: Env): Promise<Response> {
   if (!adminAuthRequired(req, env)) {
+    console.log('[Dashboard] Authentication failed');
     return getAuthChallenge();
   }
+  
+  console.log('[Dashboard] Authentication successful');
   
   // Gather statistics
   const stats = await collectStats(env);

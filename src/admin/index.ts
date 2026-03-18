@@ -481,6 +481,7 @@ const ADMIN_HTML = `<!DOCTYPE html>
           document.getElementById('userDisplay').textContent = '已登录: ' + authCredentials.username;
           return true;
         } catch (e) {
+          console.error('[Auth] Failed to parse stored credentials:', e);
           sessionStorage.removeItem('admin_auth');
         }
       }
@@ -501,11 +502,15 @@ const ADMIN_HTML = `<!DOCTYPE html>
       try {
         // Test credentials by calling dashboard
         const credentials = btoa(username + ':' + password);
+        console.log('[Frontend] Sending Authorization: Basic ' + credentials);
+        
         const res = await fetch(\`\${API_BASE}/dashboard\`, {
           headers: {
             'Authorization': 'Basic ' + credentials
           }
         });
+        
+        console.log('[Frontend] Response status:', res.status);
         
         if (res.ok) {
           // Login successful
@@ -515,10 +520,13 @@ const ADMIN_HTML = `<!DOCTYPE html>
           document.getElementById('app').style.display = 'block';
           document.getElementById('userDisplay').textContent = '已登录: ' + username;
         } else {
-          throw new Error('Invalid credentials');
+          const errorText = await res.text();
+          console.log('[Frontend] Error response:', errorText);
+          throw new Error('Invalid credentials (HTTP ' + res.status + ')');
         }
       } catch (err) {
-        errorDiv.textContent = '登录失败，请检查用户名和密码';
+        console.error('[Frontend] Login error:', err);
+        errorDiv.textContent = '登录失败: ' + err.message;
         errorDiv.style.display = 'block';
       } finally {
         btn.disabled = false;
