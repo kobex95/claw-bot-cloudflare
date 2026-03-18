@@ -22,7 +22,7 @@ crons = ["*/5 * * * *"]
 LLM_PROVIDER = "openai-compatible"
 LLM_MODEL = "qwen3-coder-plus"
 LLM_BASE_URL = "https://apis.iflow.cn/v1"
-IFLLOW_API_KEY = "sk-60ef47f5ca273fcf943400d60da3b372"
+OPENAI_API_KEY = "sk-60ef47f5ca273fcf943400d60da3b372"
 
 ADMIN_USERNAME = "ericlx"
 ADMIN_PASSWORD = "bb5201314lx"
