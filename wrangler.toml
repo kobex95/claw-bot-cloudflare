@@ -3,43 +3,32 @@ main = "src/index.ts"
 compatibility_date = "2025-03-01"
 compatibility_flags = ["nodejs_compat"]
 
-# Development environment
-[env.dev]
-# No durable objects in dev (use mock)
-
-# Production environment
-[env.production]
-# Durable Object for session management
-[[durable_objects.bindings]]
-name = "SESSION_DO"
-class_name = "SessionDO"
-
 # KV namespace for skills storage
 [[kv_namespaces]]
 binding = "KV_SKILLS"
-id = "your-kv-namespace-id"  # Replace after creating KV
+id = "6717aa4238004db28d8850eeab69d76e"
 
 # D1 database for long-term memory
 [[d1_databases]]
 binding = "DB_MEMORY"
 database_name = "claw-memory"
-database_id = "your-d1-database-id"  # Replace after creating D1
+database_id = "96b90725-97e4-4af5-9b7d-16e5fa1fcc1f"
+
+# Durable Object for session management
+[[durable_objects.bindings]]
+name = "SESSION_DO"
+class_name = "SessionDO"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["SessionDO"]
 
 # Cron triggers for heartbeat and maintenance
 [triggers]
-crons = ["*/5 * * * *"]  # Every 5 minutes
+crons = ["*/5 * * * *"]
 
-# Variables (use secrets in production)
+# Environment variables (sensitive ones set via wrangler secret)
 [vars]
-# OPENAI_API_KEY = "sk-..."
-# TELEGRAM_BOT_TOKEN = ""
-# DISCORD_BOT_TOKEN = ""
-# ADMIN_USERNAME = "admin"
-# ADMIN_PASSWORD = "your-secure-password"
-# FEISHU_APP_ID = ""
-# FEISHU_APP_SECRET = ""
-# FEISHU_ENCRYPT_KEY = ""
-
-# Build configuration
-[build]
-command = "npm run build"
+LLM_PROVIDER = "openai-compatible"
+LLM_MODEL = "qwen3-coder-plus"
+LLM_BASE_URL = "https://apis.iflow.cn/v1"
